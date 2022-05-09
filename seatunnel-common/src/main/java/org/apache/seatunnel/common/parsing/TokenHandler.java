@@ -15,25 +15,9 @@
  * limitations under the License.
  */
 
-package org.apache.seatunnel.config.utils;
+package org.apache.seatunnel.common.parsing;
 
-import java.io.File;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.nio.file.Paths;
+public interface TokenHandler {
 
-public final class FileUtils {
-
-    private FileUtils() {
-    }
-
-    // get file from classpath, resources folder
-    public static File getFileFromResources(String fileName) throws URISyntaxException {
-        URL resource = FileUtils.class.getResource(fileName);
-        if (resource == null) {
-            throw new IllegalArgumentException("file is not found!");
-        }
-        return Paths.get(resource.toURI()).toFile();
-    }
-
+    String handleToken(String content);
 }

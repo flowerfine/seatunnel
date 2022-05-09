@@ -30,7 +30,7 @@ import java.nio.file.Paths;
 public class LocalFlinkExample {
 
     public static void main(String[] args) throws FileNotFoundException, URISyntaxException {
-        String configFile = getTestConfigFile("/examples/fake_to_console.conf");
+        String configFile = getTestConfigFile("/examples/flink_jdbc.conf");
         FlinkCommandArgs flinkCommandArgs = new FlinkCommandArgs();
         flinkCommandArgs.setConfigFile(configFile);
         flinkCommandArgs.setCheckConfig(false);

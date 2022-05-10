@@ -24,9 +24,12 @@ import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
 import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
 import org.apache.flink.connector.jdbc.JdbcOutputFormat;
+import org.apache.flink.connector.jdbc.utils.JdbcTypeUtil;
+import org.apache.flink.connector.jdbc.utils.JdbcUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.types.Row;
 import org.apache.seatunnel.common.config.CheckConfigUtil;
 import org.apache.seatunnel.common.config.CheckResult;
@@ -42,9 +45,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.apache.seatunnel.flink.jdbc.Config.*;
@@ -128,14 +130,20 @@ public class JdbcSink implements FlinkStreamSink, FlinkBatchSink {
     @Override
     public void outputStream(FlinkEnvironment env, DataStream<Row> dataStream) {
         executePreSql();
-
         Table table = env.getStreamTableEnvironment().fromDataStream(dataStream);
-        List<TypeInformation> typeInformations = new ArrayList<>();
-        Map<String, Integer> fieldTypeMap = JdbcUtil.getFieldTypeMap(table.getSchema(), new HashMap<>());
+
+        Map<String, TypeInformation> fieldTypeInformationMap = new HashMap<>();
+        Map<String, Integer> fieldSqlTypeMap = new HashMap<>();
+        Map<String, Integer> fieldPositionMap = new HashMap<>();
+        buildFieldNameMapping(table.getSchema(), fieldTypeInformationMap, fieldSqlTypeMap, fieldPositionMap);
+
+        TypeInformation[] typeInformations = getTypeInfomationsArray(fieldTypeInformationMap);
+        RowTypeInfo rowTypeInfo = new RowTypeInfo(typeInformations);
+        int[] types = getSqlTypesArray(fieldSqlTypeMap);
 
         SinkFunction<Row> sink = org.apache.flink.connector.jdbc.JdbcSink.sink(
                 statementSql,
-                (st, row) -> JdbcUtil.setRecordToStatement(st, fieldTypeMap, parameters, row),
+                (st, row) -> JdbcUtils.setRecordToStatement(st, types, row),
                 JdbcExecutionOptions.builder()
                         .withBatchSize(batchSize)
                         .withBatchIntervalMs(batchIntervalMs)
@@ -148,10 +156,11 @@ public class JdbcSink implements FlinkStreamSink, FlinkBatchSink {
                         .withPassword(password)
                         .build());
 
+        DataStream<Row> dataStreamN = dataStream.map(source -> copyFields(source, fieldPositionMap)).returns(rowTypeInfo);
         if (config.hasPath(PARALLELISM)) {
-            dataStream.addSink(sink).setParallelism(config.getInt(PARALLELISM));
+            dataStreamN.addSink(sink).setParallelism(config.getInt(PARALLELISM));
         } else {
-            dataStream.addSink(sink);
+            dataStreamN.addSink(sink);
         }
     }
 
@@ -159,20 +168,15 @@ public class JdbcSink implements FlinkStreamSink, FlinkBatchSink {
     public void outputBatch(FlinkEnvironment env, DataSet<Row> dataSet) {
         executePreSql();
         Table table = env.getBatchTableEnvironment().fromDataSet(dataSet);
-        Map<String, TypeInformation> typeInformationMap = new HashMap<>();
 
+        Map<String, TypeInformation> fieldTypeInformationMap = new HashMap<>();
+        Map<String, Integer> fieldSqlTypeMap = new HashMap<>();
+        Map<String, Integer> fieldPositionMap = new HashMap<>();
+        buildFieldNameMapping(table.getSchema(), fieldTypeInformationMap, fieldSqlTypeMap, fieldPositionMap);
 
-        Map<String, Integer> fieldTypeMap = JdbcUtil.getFieldTypeMap(table.getSchema(), typeInformationMap);
-        int[] types = JdbcUtil.getSqlTypesArray(fieldTypeMap, parameters);
-
-        TypeInformation[] typeInformations = new TypeInformation[parameters.length];
-        for (int i = 0; i < parameters.length; i++) {
-            typeInformations[i] = typeInformationMap.get(parameters[i]);
-        }
-        final RowTypeInfo rowTypeInfo = new RowTypeInfo(typeInformations);
-
-        final Map<String, Integer> fieldPositionMap = JdbcUtil.getFieldPositionMap(table.getSchema());
-
+        TypeInformation[] typeInformations = getTypeInfomationsArray(fieldTypeInformationMap);
+        RowTypeInfo rowTypeInfo = new RowTypeInfo(typeInformations);
+        int[] types = getSqlTypesArray(fieldSqlTypeMap);
         JdbcOutputFormat format = JdbcOutputFormat.buildJdbcOutputFormat()
                 .setDrivername(driverName)
                 .setDBUrl(dbUrl)
@@ -190,7 +194,33 @@ public class JdbcSink implements FlinkStreamSink, FlinkBatchSink {
         executePostSql();
     }
 
-    private Row copyFields(Row source,Map<String, Integer> fieldPositionMap) {
+    private void buildFieldNameMapping(TableSchema schema,
+                                       Map<String, TypeInformation> fieldTypeInformationMap,
+                                       Map<String, Integer> fieldSqlTypeMap,
+                                       Map<String, Integer> fieldPositionMap) {
+        int position = 0;
+        for (String fieldName : schema.getFieldNames()) {
+            TypeInformation<?> typeInformation = schema.getFieldType(fieldName).orElseThrow(() -> new RuntimeException("absent type information for field " + fieldName));
+            fieldTypeInformationMap.put(fieldName, typeInformation);
+            int jdbcType = JdbcTypeUtil.typeInformationToSqlType(typeInformation);
+            fieldSqlTypeMap.put(fieldName, jdbcType);
+            fieldPositionMap.put(fieldName, position++);
+        }
+    }
+
+    private int[] getSqlTypesArray(Map<String, Integer> fieldSqlTypeMap) {
+        return Arrays.stream(parameters)
+                .mapToInt(fieldSqlTypeMap::get)
+                .toArray();
+    }
+
+    private TypeInformation[] getTypeInfomationsArray(Map<String, TypeInformation> fieldTypeInformationMap) {
+        return Arrays.stream(parameters)
+                .map(fieldTypeInformationMap::get)
+                .toArray(size -> new TypeInformation[size]);
+    }
+
+    private Row copyFields(Row source, Map<String, Integer> fieldPositionMap) {
         Row target = new Row(source.getKind(), parameters.length);
         for (int i = 0; i < parameters.length; i++) {
             String parameter = parameters[i];

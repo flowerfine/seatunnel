@@ -18,7 +18,7 @@
 package org.apache.seatunnel.common.parsing;
 
 /**
- * forkef from <a href="https://github.com/mybatis/mybatis-3/blob/master/src/main/java/org/apache/ibatis/parsing/GenericTokenParser.java">mybatis-GenericTokenParser</>
+ * forked from <a href="https://github.com/mybatis/mybatis-3/blob/master/src/main/java/org/apache/ibatis/parsing/GenericTokenParser.java">mybatis-GenericTokenParser</a>
  */
 public class GenericTokenParser {
 

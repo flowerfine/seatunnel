@@ -17,6 +17,28 @@
 
 package org.apache.seatunnel.flink.jdbc.sink;
 
+import static org.apache.seatunnel.flink.jdbc.Config.DRIVER;
+import static org.apache.seatunnel.flink.jdbc.Config.PARALLELISM;
+import static org.apache.seatunnel.flink.jdbc.Config.PASSWORD;
+import static org.apache.seatunnel.flink.jdbc.Config.QUERY;
+import static org.apache.seatunnel.flink.jdbc.Config.SINK_BATCH_INTERVAL;
+import static org.apache.seatunnel.flink.jdbc.Config.SINK_BATCH_MAX_RETRIES;
+import static org.apache.seatunnel.flink.jdbc.Config.SINK_BATCH_SIZE;
+import static org.apache.seatunnel.flink.jdbc.Config.SINK_IGNORE_POST_SQL_EXCEPTIONS;
+import static org.apache.seatunnel.flink.jdbc.Config.SINK_POST_SQL;
+import static org.apache.seatunnel.flink.jdbc.Config.SINK_PRE_SQL;
+import static org.apache.seatunnel.flink.jdbc.Config.URL;
+import static org.apache.seatunnel.flink.jdbc.Config.USERNAME;
+
+import org.apache.seatunnel.common.config.CheckConfigUtil;
+import org.apache.seatunnel.common.config.CheckResult;
+import org.apache.seatunnel.common.parsing.StatementSqlBuilder;
+import org.apache.seatunnel.flink.FlinkEnvironment;
+import org.apache.seatunnel.flink.batch.FlinkBatchSink;
+import org.apache.seatunnel.flink.stream.FlinkStreamSink;
+
+import org.apache.seatunnel.shade.com.typesafe.config.Config;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.DataSet;
@@ -31,13 +53,6 @@ import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableSchema;
 import org.apache.flink.types.Row;
-import org.apache.seatunnel.common.config.CheckConfigUtil;
-import org.apache.seatunnel.common.config.CheckResult;
-import org.apache.seatunnel.common.parsing.StatementSqlBuilder;
-import org.apache.seatunnel.flink.FlinkEnvironment;
-import org.apache.seatunnel.flink.batch.FlinkBatchSink;
-import org.apache.seatunnel.flink.stream.FlinkStreamSink;
-import org.apache.seatunnel.shade.com.typesafe.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,8 +63,6 @@ import java.sql.Statement;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-
-import static org.apache.seatunnel.flink.jdbc.Config.*;
 
 public class JdbcSink implements FlinkStreamSink, FlinkBatchSink {
 
@@ -142,19 +155,19 @@ public class JdbcSink implements FlinkStreamSink, FlinkBatchSink {
         int[] types = getSqlTypesArray(fieldSqlTypeMap);
 
         SinkFunction<Row> sink = org.apache.flink.connector.jdbc.JdbcSink.sink(
-                statementSql,
-                (st, row) -> JdbcUtils.setRecordToStatement(st, types, row),
-                JdbcExecutionOptions.builder()
-                        .withBatchSize(batchSize)
-                        .withBatchIntervalMs(batchIntervalMs)
-                        .withMaxRetries(maxRetries)
-                        .build(),
-                new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
-                        .withUrl(dbUrl)
-                        .withDriverName(driverName)
-                        .withUsername(username)
-                        .withPassword(password)
-                        .build());
+            statementSql,
+            (st, row) -> JdbcUtils.setRecordToStatement(st, types, row),
+            JdbcExecutionOptions.builder()
+                .withBatchSize(batchSize)
+                .withBatchIntervalMs(batchIntervalMs)
+                .withMaxRetries(maxRetries)
+                .build(),
+            new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
+                .withUrl(dbUrl)
+                .withDriverName(driverName)
+                .withUsername(username)
+                .withPassword(password)
+                .build());
 
         DataStream<Row> dataStreamN = dataStream.map(source -> copyFields(source, fieldPositionMap)).returns(rowTypeInfo);
         if (config.hasPath(PARALLELISM)) {
@@ -178,14 +191,14 @@ public class JdbcSink implements FlinkStreamSink, FlinkBatchSink {
         RowTypeInfo rowTypeInfo = new RowTypeInfo(typeInformations);
         int[] types = getSqlTypesArray(fieldSqlTypeMap);
         JdbcOutputFormat format = JdbcOutputFormat.buildJdbcOutputFormat()
-                .setDrivername(driverName)
-                .setDBUrl(dbUrl)
-                .setUsername(username)
-                .setPassword(password)
-                .setQuery(statementSql)
-                .setBatchSize(batchSize)
-                .setSqlTypes(types)
-                .finish();
+            .setDrivername(driverName)
+            .setDBUrl(dbUrl)
+            .setUsername(username)
+            .setPassword(password)
+            .setQuery(statementSql)
+            .setBatchSize(batchSize)
+            .setSqlTypes(types)
+            .finish();
         dataSet.map(source -> copyFields(source, fieldPositionMap)).returns(rowTypeInfo).output(format);
     }
 
@@ -210,14 +223,14 @@ public class JdbcSink implements FlinkStreamSink, FlinkBatchSink {
 
     private int[] getSqlTypesArray(Map<String, Integer> fieldSqlTypeMap) {
         return Arrays.stream(parameters)
-                .mapToInt(fieldSqlTypeMap::get)
-                .toArray();
+            .mapToInt(fieldSqlTypeMap::get)
+            .toArray();
     }
 
     private TypeInformation[] getTypeInfomationsArray(Map<String, TypeInformation> fieldTypeInformationMap) {
         return Arrays.stream(parameters)
-                .map(fieldTypeInformationMap::get)
-                .toArray(size -> new TypeInformation[size]);
+            .map(fieldTypeInformationMap::get)
+            .toArray(size -> new TypeInformation[size]);
     }
 
     private Row copyFields(Row source, Map<String, Integer> fieldPositionMap) {

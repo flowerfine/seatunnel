@@ -589,6 +589,12 @@
                 <version>${iceberg.version}</version>
                 <scope>provided</scope>
             </dependency>
+            <dependency>
+                <groupId>org.apache.iceberg</groupId>
+                <artifactId>iceberg-flink-runtime-1.13</artifactId>
+                <version>${iceberg.version}</version>
+                <scope>provided</scope>
+            </dependency>
 
             <dependency>
                 <groupId>org.scala-lang</groupId>

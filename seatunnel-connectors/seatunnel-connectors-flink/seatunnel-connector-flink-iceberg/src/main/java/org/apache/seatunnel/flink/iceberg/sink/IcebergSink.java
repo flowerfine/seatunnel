@@ -29,13 +29,20 @@ import org.apache.iceberg.jdbc.JdbcCatalog;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * must enable checkpoint in unbounded streams
+ *   execution.checkpoint.interval = 10000
+ *   execution.checkpoint.data-uri = "file:///path/to/your/checkpoints"
+ */
 @AutoService(BaseFlinkSink.class)
 public class IcebergSink implements FlinkStreamSink {
 
     private Config config;
     private Map<String, String> props;
     private Configuration conf;
+    private CatalogLoader catalogLoader;
     private Catalog catalog;
+    private TableIdentifier tableIdentifier;
 
     @Override
     public void setConfig(Config config) {
@@ -80,7 +87,20 @@ public class IcebergSink implements FlinkStreamSink {
         conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
         conf.set("fs.s3a.fast.upload", "true");
 
-        this.catalog = CatalogUtil.buildIcebergCatalog("jdbc_catalog_test", props, conf);
+        String catelogName = "jdbc_catalog_test";
+        this.catalog = CatalogUtil.buildIcebergCatalog(catelogName, props, conf);
+        this.catalogLoader = CatalogLoader.custom(catelogName, props, conf, JdbcCatalog.class.getName());
+
+        // ${WAREHOUSE_LOCATION}/scaleph/table_test for s3
+        this.tableIdentifier = TableIdentifier.of("scaleph", "table_test");
+    }
+
+    private org.apache.iceberg.Table createOrLoadCatalog(Table table) {
+        if (catalog.tableExists(tableIdentifier)) {
+            return catalog.loadTable(tableIdentifier);
+        }
+        Schema schema = FlinkSchemaUtil.convert(table.getSchema());
+        return catalog.createTable(tableIdentifier, schema);
     }
 
     @Override
@@ -88,13 +108,7 @@ public class IcebergSink implements FlinkStreamSink {
         StreamTableEnvironment tableEnvironment = env.getStreamTableEnvironment();
         Table table = tableEnvironment.fromDataStream(dataStream);
 
-        // ${WAREHOUSE_LOCATION}/scaleph/table_test
-        TableIdentifier tableIdentifier = TableIdentifier.of("scaleph", "table_test");
-        Schema schema = FlinkSchemaUtil.convert(table.getSchema());
-        final org.apache.iceberg.Table icebergTable = catalog.createTable(tableIdentifier, schema);
-
-        // load catalog
-        CatalogLoader catalogLoader = CatalogLoader.custom("my_catalog", props, conf, JdbcCatalog.class.getName());
+        org.apache.iceberg.Table icebergTable = createOrLoadCatalog(table);
         TableLoader tableLoader = TableLoader.fromCatalog(catalogLoader, tableIdentifier);
         FlinkSink.forRow(dataStream, table.getSchema())
             .table(icebergTable)

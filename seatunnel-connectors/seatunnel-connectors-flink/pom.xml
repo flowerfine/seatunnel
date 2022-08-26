@@ -45,6 +45,7 @@
         <module>seatunnel-connector-flink-clickhouse</module>
         <module>seatunnel-connector-flink-http</module>
         <module>seatunnel-connector-flink-assert</module>
+        <module>seatunnel-connector-flink-hudi</module>
     </modules>
 
 </project>

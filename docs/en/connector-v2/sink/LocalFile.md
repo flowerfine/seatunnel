@@ -4,28 +4,42 @@
 
 ## Description
 
-Output data to local file. Support bounded and unbounded job.
+Output data to local file.
+
+## Key features
+
+- [x] [exactly-once](../../concept/connector-v2-features.md)
+
+By default, we use 2PC commit to ensure `exactly-once`
+
+- [ ] [schema projection](../../concept/connector-v2-features.md)
+- [x] file format
+    - [x] text
+    - [x] csv
+    - [x] parquet
+    - [x] orc
+    - [x] json
 
 ## Options
 
-| name                              | type   | required | default value                                                 |
-| --------------------------------- | ------ | -------- | ------------------------------------------------------------- |
-| path                              | string | yes      | -                                                             |
-| file_name_expression              | string | no       | "${transactionId}"                                            |
-| file_format                       | string | no       | "text"                                                        |
-| filename_time_format              | string | no       | "yyyy.MM.dd"                                                  |
-| field_delimiter                   | string | no       | '\001'                                                        |
-| row_delimiter                     | string | no       | "\n"                                                          |
-| partition_by                      | array  | no       | -                                                             |
-| partition_dir_expression          | string | no       | "\${k0}=\${v0}\/\${k1}=\${v1}\/...\/\${kn}=\${vn}\/"          |
-| is_partition_field_write_in_file  | boolean| no       | false                                                         |
-| sink_columns                      | array  | no       | When this parameter is empty, all fields are sink columns     |
-| is_enable_transaction             | boolean| no       | true                                                          |
-| save_mode                         | string | no       | "error"                                                       |
+| name                              | type   | required | default value                                       |
+| --------------------------------- | ------ | -------- | --------------------------------------------------- |
+| path                              | string | yes      | -                                                   |
+| file_name_expression              | string | no       | "${transactionId}"                                  |
+| file_format                       | string | no       | "text"                                              |
+| filename_time_format              | string | no       | "yyyy.MM.dd"                                        |
+| field_delimiter                   | string | no       | '\001'                                              |
+| row_delimiter                     | string | no       | "\n"                                                |
+| partition_by                      | array  | no       | -                                                   |
+| partition_dir_expression          | string | no       | "${k0}=${v0}/${k1}=${v1}/.../${kn}=${vn}/"          |
+| is_partition_field_write_in_file  | boolean| no       | false                                               |
+| sink_columns                      | array  | no       | When this parameter is empty, all fields are sink columns |
+| is_enable_transaction             | boolean| no       | true                                                |
+| save_mode                         | string | no       | "error"                                             |
 
 ### path [string]
 
-The target dir path is required. The `hdfs file` starts with `hdfs://` , and the `local file` starts with `file://`,
+The target dir path is required.
 
 ### file_name_expression [string]
 
@@ -109,7 +123,7 @@ For text file format
 ```bash
 
 LocalFile {
-    path="file:///tmp/hive/warehouse/test2"
+    path="/tmp/hive/warehouse/test2"
     field_delimiter="\t"
     row_delimiter="\n"
     partition_by=["age"]
@@ -129,7 +143,7 @@ For parquet file format
 ```bash
 
 LocalFile {
-    path="file:///tmp/hive/warehouse/test2"
+    path="/tmp/hive/warehouse/test2"
     partition_by=["age"]
     partition_dir_expression="${k0}=${v0}"
     is_partition_field_write_in_file=true
@@ -147,7 +161,7 @@ For orc file format
 ```bash
 
 LocalFile {
-    path="file:///tmp/hive/warehouse/test2"
+    path="/tmp/hive/warehouse/test2"
     partition_by=["age"]
     partition_dir_expression="${k0}=${v0}"
     is_partition_field_write_in_file=true

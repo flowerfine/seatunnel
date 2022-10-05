@@ -17,13 +17,13 @@
 
 package org.apache.seatunnel.connectors.seatunnel.fake.source;
 
-import org.apache.seatunnel.api.common.SeaTunnelContext;
+import org.apache.seatunnel.api.common.JobContext;
 import org.apache.seatunnel.api.source.Boundedness;
 import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
 import org.apache.seatunnel.common.constants.JobMode;
-import org.apache.seatunnel.connectors.seatunnel.common.schema.SeatunnelSchema;
+import org.apache.seatunnel.connectors.seatunnel.common.schema.SeaTunnelSchema;
 import org.apache.seatunnel.connectors.seatunnel.common.source.AbstractSingleSplitReader;
 import org.apache.seatunnel.connectors.seatunnel.common.source.AbstractSingleSplitSource;
 import org.apache.seatunnel.connectors.seatunnel.common.source.SingleSplitReaderContext;
@@ -36,12 +36,13 @@ import com.google.auto.service.AutoService;
 public class FakeSource extends AbstractSingleSplitSource<SeaTunnelRow> {
 
     private Config pluginConfig;
-    private SeaTunnelContext seaTunnelContext;
-    private SeatunnelSchema schema;
+    private JobContext jobContext;
+    private SeaTunnelSchema schema;
+    private FakeConfig fakeConfig;
 
     @Override
     public Boundedness getBoundedness() {
-        return JobMode.BATCH.equals(seaTunnelContext.getJobMode()) ? Boundedness.BOUNDED : Boundedness.UNBOUNDED;
+        return JobMode.BATCH.equals(jobContext.getJobMode()) ? Boundedness.BOUNDED : Boundedness.UNBOUNDED;
     }
 
     @Override
@@ -51,7 +52,7 @@ public class FakeSource extends AbstractSingleSplitSource<SeaTunnelRow> {
 
     @Override
     public AbstractSingleSplitReader<SeaTunnelRow> createReader(SingleSplitReaderContext readerContext) throws Exception {
-        return new FakeSourceReader(readerContext, new FakeRandomData(schema));
+        return new FakeSourceReader(readerContext, new FakeDataGenerator(schema, fakeConfig));
     }
 
     @Override
@@ -62,12 +63,13 @@ public class FakeSource extends AbstractSingleSplitSource<SeaTunnelRow> {
     @Override
     public void prepare(Config pluginConfig) {
         this.pluginConfig = pluginConfig;
-        assert pluginConfig.hasPath(FakeRandomData.SCHEMA);
-        this.schema = SeatunnelSchema.buildWithConfig(pluginConfig.getConfig(FakeRandomData.SCHEMA));
+        assert pluginConfig.hasPath(FakeDataGenerator.SCHEMA);
+        this.schema = SeaTunnelSchema.buildWithConfig(pluginConfig.getConfig(FakeDataGenerator.SCHEMA));
+        this.fakeConfig = FakeConfig.buildWithConfig(pluginConfig);
     }
 
     @Override
-    public void setSeaTunnelContext(SeaTunnelContext seaTunnelContext) {
-        this.seaTunnelContext = seaTunnelContext;
+    public void setJobContext(JobContext jobContext) {
+        this.jobContext = jobContext;
     }
 }

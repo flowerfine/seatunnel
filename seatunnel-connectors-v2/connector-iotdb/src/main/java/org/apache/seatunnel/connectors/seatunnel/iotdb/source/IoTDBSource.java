@@ -21,8 +21,8 @@ import static org.apache.seatunnel.connectors.seatunnel.iotdb.config.SourceConfi
 import static org.apache.seatunnel.connectors.seatunnel.iotdb.config.SourceConfig.NODE_URLS;
 import static org.apache.seatunnel.connectors.seatunnel.iotdb.config.SourceConfig.PORT;
 
+import org.apache.seatunnel.api.common.JobContext;
 import org.apache.seatunnel.api.common.PrepareFailException;
-import org.apache.seatunnel.api.common.SeaTunnelContext;
 import org.apache.seatunnel.api.source.Boundedness;
 import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.api.source.SourceReader;
@@ -33,7 +33,7 @@ import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
 import org.apache.seatunnel.common.config.CheckConfigUtil;
 import org.apache.seatunnel.common.config.CheckResult;
 import org.apache.seatunnel.common.constants.PluginType;
-import org.apache.seatunnel.connectors.seatunnel.common.schema.SeatunnelSchema;
+import org.apache.seatunnel.connectors.seatunnel.common.schema.SeaTunnelSchema;
 import org.apache.seatunnel.connectors.seatunnel.iotdb.state.IoTDBSourceState;
 
 import org.apache.seatunnel.shade.com.typesafe.config.Config;
@@ -46,7 +46,7 @@ import java.util.Map;
 @AutoService(SeaTunnelSource.class)
 public class IoTDBSource implements SeaTunnelSource<SeaTunnelRow, IoTDBSourceSplit, IoTDBSourceState> {
 
-    private SeaTunnelContext seaTunnelContext;
+    private JobContext jobContext;
 
     private SeaTunnelRowType typeInfo;
 
@@ -67,7 +67,7 @@ public class IoTDBSource implements SeaTunnelSource<SeaTunnelRow, IoTDBSourceSpl
                 throw new PrepareFailException(getPluginName(), PluginType.SOURCE, "host and port and node urls are both empty");
             }
         }
-        SeatunnelSchema seatunnelSchema = SeatunnelSchema.buildWithConfig(pluginConfig);
+        SeaTunnelSchema seatunnelSchema = SeaTunnelSchema.buildWithConfig(pluginConfig);
         this.typeInfo = seatunnelSchema.getSeaTunnelRowType();
         pluginConfig.entrySet().forEach(entry -> configParams.put(entry.getKey(), entry.getValue().unwrapped()));
     }
@@ -94,7 +94,7 @@ public class IoTDBSource implements SeaTunnelSource<SeaTunnelRow, IoTDBSourceSpl
 
     @Override
     public SourceSplitEnumerator<IoTDBSourceSplit, IoTDBSourceState> restoreEnumerator(SourceSplitEnumerator.Context<IoTDBSourceSplit> enumeratorContext, IoTDBSourceState checkpointState) throws Exception {
-        return new IoTDBSourceSplitEnumerator(enumeratorContext, checkpointState, configParams);
+        return new IoTDBSourceSplitEnumerator(enumeratorContext, configParams, checkpointState);
     }
 
 }

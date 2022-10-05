@@ -17,16 +17,24 @@
 
 package org.apache.seatunnel.connectors.seatunnel.file.hdfs.sink;
 
+import org.apache.seatunnel.api.common.PrepareFailException;
 import org.apache.seatunnel.api.sink.SeaTunnelSink;
-import org.apache.seatunnel.connectors.seatunnel.file.sink.AbstractFileSink;
-import org.apache.seatunnel.connectors.seatunnel.file.sink.spi.SinkFileSystemPlugin;
+import org.apache.seatunnel.connectors.seatunnel.file.config.FileSystemType;
+
+import org.apache.seatunnel.shade.com.typesafe.config.Config;
 
 import com.google.auto.service.AutoService;
 
 @AutoService(SeaTunnelSink.class)
-public class HdfsFileSink extends AbstractFileSink {
+public class HdfsFileSink extends BaseHdfsFileSink {
+
     @Override
-    public SinkFileSystemPlugin getSinkFileSystemPlugin() {
-        return new HdfsFileSinkPlugin();
+    public String getPluginName() {
+        return FileSystemType.HDFS.getFileSystemPluginName();
+    }
+
+    @Override
+    public void prepare(Config pluginConfig) throws PrepareFailException {
+        super.prepare(pluginConfig);
     }
 }

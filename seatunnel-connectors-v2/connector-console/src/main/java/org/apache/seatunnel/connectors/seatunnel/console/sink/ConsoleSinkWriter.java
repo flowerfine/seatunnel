@@ -25,7 +25,9 @@ import org.apache.seatunnel.connectors.seatunnel.common.sink.AbstractSinkWriter;
 
 import org.apache.commons.lang3.StringUtils;
 
-import java.util.Arrays;
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class ConsoleSinkWriter extends AbstractSinkWriter<SeaTunnelRow, Void> {
@@ -57,14 +59,26 @@ public class ConsoleSinkWriter extends AbstractSinkWriter<SeaTunnelRow, Void> {
     }
 
     private String fieldToString(SeaTunnelDataType<?> type, Object value) {
+        if (value == null) {
+            return null;
+        }
         switch (type.getSqlType()) {
             case ARRAY:
             case BYTES:
-                return Arrays.toString((Object[]) value);
+                List<String> arrayData = new ArrayList<>();
+                for (int i = 0; i < Array.getLength(value); i++) {
+                    arrayData.add(String.valueOf(Array.get(value, i)));
+                }
+                return arrayData.toString();
             case MAP:
                 return JsonUtils.toJsonString(value);
             case ROW:
-                return fieldToString(type, value);
+                List<String> rowData = new ArrayList<>();
+                SeaTunnelRowType rowType = (SeaTunnelRowType) type;
+                for (int i = 0; i < rowType.getTotalFields(); i++) {
+                    rowData.add(fieldToString(rowType.getFieldTypes()[i], ((SeaTunnelRow) value).getField(i)));
+                }
+                return rowData.toString();
             default:
                 return String.valueOf(value);
         }

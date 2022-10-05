@@ -22,10 +22,11 @@ import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.common.config.CheckConfigUtil;
 import org.apache.seatunnel.common.config.CheckResult;
 import org.apache.seatunnel.common.constants.PluginType;
-import org.apache.seatunnel.connectors.seatunnel.common.schema.SeatunnelSchema;
+import org.apache.seatunnel.connectors.seatunnel.common.schema.SeaTunnelSchema;
 import org.apache.seatunnel.connectors.seatunnel.file.config.FileFormat;
 import org.apache.seatunnel.connectors.seatunnel.file.config.FileSystemType;
 import org.apache.seatunnel.connectors.seatunnel.file.exception.FilePluginException;
+import org.apache.seatunnel.connectors.seatunnel.file.local.config.LocalConf;
 import org.apache.seatunnel.connectors.seatunnel.file.local.source.config.LocalSourceConfig;
 import org.apache.seatunnel.connectors.seatunnel.file.source.BaseFileSource;
 import org.apache.seatunnel.connectors.seatunnel.file.source.reader.ReadStrategyFactory;
@@ -33,6 +34,7 @@ import org.apache.seatunnel.connectors.seatunnel.file.source.reader.ReadStrategy
 import org.apache.seatunnel.shade.com.typesafe.config.Config;
 
 import com.google.auto.service.AutoService;
+import org.apache.hadoop.fs.CommonConfigurationKeys;
 
 import java.io.IOException;
 
@@ -52,18 +54,18 @@ public class LocalFileSource extends BaseFileSource {
         }
         readStrategy = ReadStrategyFactory.of(pluginConfig.getString(LocalSourceConfig.FILE_TYPE));
         String path = pluginConfig.getString(LocalSourceConfig.FILE_PATH);
-        hadoopConf = null;
+        hadoopConf = new LocalConf(CommonConfigurationKeys.FS_DEFAULT_NAME_DEFAULT);
         try {
             filePaths = readStrategy.getFileNamesByPath(hadoopConf, path);
         } catch (IOException e) {
             throw new PrepareFailException(getPluginName(), PluginType.SOURCE, "Check file path fail.");
         }
         // support user-defined schema
-        FileFormat fileFormat = FileFormat.valueOf(pluginConfig.getString(LocalSourceConfig.FILE_PATH).toUpperCase());
+        FileFormat fileFormat = FileFormat.valueOf(pluginConfig.getString(LocalSourceConfig.FILE_TYPE).toUpperCase());
         // only json type support user-defined schema now
-        if (pluginConfig.hasPath(SeatunnelSchema.SCHEMA) && fileFormat.equals(FileFormat.JSON)) {
-            Config schemaConfig = pluginConfig.getConfig(SeatunnelSchema.SCHEMA);
-            rowType = SeatunnelSchema
+        if (pluginConfig.hasPath(SeaTunnelSchema.SCHEMA) && fileFormat.equals(FileFormat.JSON)) {
+            Config schemaConfig = pluginConfig.getConfig(SeaTunnelSchema.SCHEMA);
+            rowType = SeaTunnelSchema
                     .buildWithConfig(schemaConfig)
                     .getSeaTunnelRowType();
             readStrategy.setSeaTunnelRowTypeInfo(rowType);

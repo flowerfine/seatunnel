@@ -17,8 +17,8 @@
 
 package org.apache.seatunnel.connectors.seatunnel.http.source;
 
+import org.apache.seatunnel.api.common.JobContext;
 import org.apache.seatunnel.api.common.PrepareFailException;
-import org.apache.seatunnel.api.common.SeaTunnelContext;
 import org.apache.seatunnel.api.serialization.DeserializationSchema;
 import org.apache.seatunnel.api.source.Boundedness;
 import org.apache.seatunnel.api.source.SeaTunnelSource;
@@ -29,7 +29,7 @@ import org.apache.seatunnel.common.config.CheckConfigUtil;
 import org.apache.seatunnel.common.config.CheckResult;
 import org.apache.seatunnel.common.constants.JobMode;
 import org.apache.seatunnel.common.constants.PluginType;
-import org.apache.seatunnel.connectors.seatunnel.common.schema.SeatunnelSchema;
+import org.apache.seatunnel.connectors.seatunnel.common.schema.SeaTunnelSchema;
 import org.apache.seatunnel.connectors.seatunnel.common.source.AbstractSingleSplitReader;
 import org.apache.seatunnel.connectors.seatunnel.common.source.AbstractSingleSplitSource;
 import org.apache.seatunnel.connectors.seatunnel.common.source.SingleSplitReaderContext;
@@ -45,7 +45,7 @@ import com.google.auto.service.AutoService;
 public class HttpSource extends AbstractSingleSplitSource<SeaTunnelRow> {
     protected final HttpParameter httpParameter = new HttpParameter();
     protected SeaTunnelRowType rowType;
-    protected SeaTunnelContext seaTunnelContext;
+    protected JobContext jobContext;
     protected DeserializationSchema<SeaTunnelRow> deserializationSchema;
 
     @Override
@@ -55,7 +55,7 @@ public class HttpSource extends AbstractSingleSplitSource<SeaTunnelRow> {
 
     @Override
     public Boundedness getBoundedness() {
-        return JobMode.BATCH.equals(seaTunnelContext.getJobMode()) ? Boundedness.BOUNDED : Boundedness.UNBOUNDED;
+        return JobMode.BATCH.equals(jobContext.getJobMode()) ? Boundedness.BOUNDED : Boundedness.UNBOUNDED;
     }
 
     @Override
@@ -67,25 +67,29 @@ public class HttpSource extends AbstractSingleSplitSource<SeaTunnelRow> {
         this.httpParameter.buildWithConfig(pluginConfig);
         if (pluginConfig.hasPath(HttpConfig.SCHEMA)) {
             Config schema = pluginConfig.getConfig(HttpConfig.SCHEMA);
-            this.rowType = SeatunnelSchema.buildWithConfig(schema).getSeaTunnelRowType();
+            this.rowType = SeaTunnelSchema.buildWithConfig(schema).getSeaTunnelRowType();
+            // default use json format
+            String format = HttpConfig.DEFAULT_FORMAT;
+            if (pluginConfig.hasPath(HttpConfig.FORMAT)) {
+                format = pluginConfig.getString(HttpConfig.FORMAT);
+            }
+            switch (format) {
+                case HttpConfig.DEFAULT_FORMAT:
+                    this.deserializationSchema = new JsonDeserializationSchema(false, false, rowType);
+                    break;
+                default:
+                    // TODO: use format SPI
+                    throw new UnsupportedOperationException("Unsupported format: " + format);
+            }
         } else {
-            this.rowType = SeatunnelSchema.buildSimpleTextSchema();
-        }
-        // TODO: use format SPI
-        // default use json format
-        String format;
-        if (pluginConfig.hasPath(HttpConfig.FORMAT)) {
-            format = pluginConfig.getString(HttpConfig.FORMAT);
-            this.deserializationSchema = null;
-        } else {
-            format = HttpConfig.DEFAULT_FORMAT;
-            this.deserializationSchema = new JsonDeserializationSchema(false, false, rowType);
+            this.rowType = SeaTunnelSchema.buildSimpleTextSchema();
+            this.deserializationSchema = new SimpleTextDeserializationSchema(this.rowType);
         }
     }
 
     @Override
-    public void setSeaTunnelContext(SeaTunnelContext seaTunnelContext) {
-        this.seaTunnelContext = seaTunnelContext;
+    public void setJobContext(JobContext jobContext) {
+        this.jobContext = jobContext;
     }
 
     @Override

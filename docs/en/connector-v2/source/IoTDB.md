@@ -36,6 +36,7 @@ supports query SQL and can achieve projection effect.
 | thrift_default_buffer_size | int     | no       | -             |
 | enable_cache_leader        | boolean | no       | -             |
 | version                    | string  | no       | -             |
+| common-options             |         | no       | -             |
 
 ### single node, you need to set host and port to connect to the remote data source.
 
@@ -49,7 +50,8 @@ supports query SQL and can achieve projection effect.
 
 e.g.
 
-``` 127.0.0.1:8080,127.0.0.2:8080
+```text
+127.0.0.1:8080,127.0.0.2:8080
 ```
 
 ### other parameters
@@ -147,6 +149,10 @@ lower bound of the time column
 
 ```
 
+### common options 
+
+Source plugin common parameters, please refer to [Source Common Options](common-options.md) for details
+
 ## Examples
 
 ### Case1
@@ -204,3 +210,17 @@ Loaded to SeaTunnelRow data format is the following:
 |1664035200001       | root.test_group.device_a   | 36.1        | 100         |
 |1664035200001       | root.test_group.device_b   | 36.2        | 101         |
 |1664035200001       | root.test_group.device_c   | 36.3        | 102         |
+
+
+## Changelog
+
+### 2.2.0-beta 2022-09-26
+
+- Add IoTDB Source Connector
+
+### 2.3.0-beta 2022-10-20
+
+- [Improve] Improve IoTDB Source Connector ([2917](https://github.com/apache/incubator-seatunnel/pull/2917))
+  - Support extract timestamp、device、measurement from SeaTunnelRow
+  - Support TINYINT、SMALLINT
+  - Support flush cache to database before prepareCommit

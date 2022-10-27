@@ -42,8 +42,7 @@ There is a conflict of thrift version between IoTDB and Spark.Therefore, you nee
 | zone_id                       | string            | no       | -                                 |
 | enable_rpc_compression        | boolean           | no       | -                                 |
 | connection_timeout_in_ms      | int               | no       | -                                 |
-| common-options                | string            | no       | -                                 |
-
+| common-options                |                   | no       | -                                 |
 ### node_urls [list]
 
 `IoTDB` cluster address, the format is `["host:port", ...]`
@@ -114,7 +113,7 @@ Enable rpc compression in `IoTDB` client
 
 The maximum time (in ms) to wait when connect `IoTDB`
 
-### common options [string]
+### common options
 
 Sink plugin common parameters, please refer to [Sink Common Options](common-options.md) for details
 
@@ -203,3 +202,17 @@ IoTDB> SELECT * FROM root.test_group.* align by device;
 |2022-09-25T00:00:00.001Z|root.test_group.device_c|          36.3|        102|
 +------------------------+------------------------+--------------+-----------+
 ```
+
+## Changelog
+
+### 2.2.0-beta 2022-09-26
+
+- Add IoTDB Sink Connector
+
+### 2.3.0-beta 2022-10-20
+- [Improve] Improve IoTDB Sink Connector ([2917](https://github.com/apache/incubator-seatunnel/pull/2917))
+  - Support align by sql syntax
+  - Support sql split ignore case
+  - Support restore split offset to at-least-once
+  - Support read timestamp from RowRecord
+- [BugFix] Fix IoTDB connector sink NPE ([3080](https://github.com/apache/incubator-seatunnel/pull/3080))

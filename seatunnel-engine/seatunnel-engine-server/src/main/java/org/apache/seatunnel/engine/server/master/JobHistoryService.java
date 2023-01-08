@@ -17,6 +17,8 @@
 
 package org.apache.seatunnel.engine.server.master;
 
+import org.apache.seatunnel.api.common.metrics.JobMetrics;
+import org.apache.seatunnel.engine.core.job.JobDAGInfo;
 import org.apache.seatunnel.engine.core.job.JobStatus;
 import org.apache.seatunnel.engine.core.job.PipelineStatus;
 import org.apache.seatunnel.engine.server.dag.physical.PipelineLocation;
@@ -61,11 +63,18 @@ public class JobHistoryService {
     private final Map<Long, JobMaster> runningJobMasterMap;
 
     /**
+     * finishedJobVertexInfoImap key is jobId and value is JobDAGInfo
+     */
+    private final IMap<Long, JobDAGInfo> finishedJobDAGInfoImap;
+
+    /**
      * finishedJobStateImap key is jobId and value is jobState(json)
      * JobStateData Indicates the status of the job, pipeline, and task
      */
     //TODO need to limit the amount of storage
     private final IMap<Long, JobStateData> finishedJobStateImap;
+
+    private final IMap<Long, JobMetrics> finishedJobMetricsImap;
 
     private final ObjectMapper objectMapper;
 
@@ -73,12 +82,16 @@ public class JobHistoryService {
         IMap<Object, Object> runningJobStateIMap,
         ILogger logger,
         Map<Long, JobMaster> runningJobMasterMap,
-        IMap<Long, JobStateData> finishedJobStateImap
+        IMap<Long, JobStateData> finishedJobStateImap,
+        IMap<Long, JobMetrics> finishedJobMetricsImap,
+        IMap<Long, JobDAGInfo> finishedJobVertexInfoImap
     ) {
         this.runningJobStateIMap = runningJobStateIMap;
         this.logger = logger;
         this.runningJobMasterMap = runningJobMasterMap;
         this.finishedJobStateImap = finishedJobStateImap;
+        this.finishedJobMetricsImap = finishedJobMetricsImap;
+        this.finishedJobDAGInfoImap = finishedJobVertexInfoImap;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
     }
@@ -99,14 +112,22 @@ public class JobHistoryService {
     }
 
     // Get detailed status of a single job
-    public JobStateData getJobStatus(Long jobId) {
+    public JobStateData getJobDetailState(Long jobId) {
         return runningJobMasterMap.containsKey(jobId) ? toJobStateMapper(runningJobMasterMap.get(jobId)) :
             finishedJobStateImap.getOrDefault(jobId, null);
     }
 
+    public JobMetrics getJobMetrics(Long jobId) {
+        return finishedJobMetricsImap.getOrDefault(jobId, null);
+    }
+
+    public JobDAGInfo getJobDAGInfo(Long jobId) {
+        return finishedJobDAGInfoImap.getOrDefault(jobId, null);
+    }
+
     // Get detailed status of a single job as json
-    public String getJobStatusAsString(Long jobId) {
-        JobStateData jobStatus = getJobStatus(jobId);
+    public String getJobDetailStateAsString(Long jobId) {
+        JobStateData jobStatus = getJobDetailState(jobId);
         if (null != jobStatus) {
             try {
                 return objectMapper.writeValueAsString(jobStatus);
@@ -126,6 +147,13 @@ public class JobHistoryService {
     public void storeFinishedJobState(JobMaster jobMaster) {
         JobStateData jobStateData = toJobStateMapper(jobMaster);
         finishedJobStateImap.put(jobStateData.jobId, jobStateData, 14, TimeUnit.DAYS);
+    }
+
+    @SuppressWarnings("checkstyle:MagicNumber")
+    public void storeFinishedPipelineMetrics(long jobId, JobMetrics metrics) {
+        finishedJobMetricsImap.computeIfAbsent(jobId, key -> JobMetrics.of(new HashMap<>()));
+        JobMetrics newMetrics = finishedJobMetricsImap.get(jobId).merge(metrics);
+        finishedJobMetricsImap.put(jobId, newMetrics, 14, TimeUnit.DAYS);
     }
 
     private JobStateData toJobStateMapper(JobMaster jobMaster) {
@@ -154,6 +182,10 @@ public class JobHistoryService {
         return new JobStateData(jobId, jobStatus, pipelineStateMapperMap);
     }
 
+    public void storeJobInfo(long jobId, JobDAGInfo jobInfo) {
+        finishedJobDAGInfoImap.put(jobId, jobInfo);
+    }
+
     @AllArgsConstructor
     @Data
     public static final class JobStatusData implements Serializable {
@@ -163,7 +195,7 @@ public class JobHistoryService {
 
     @AllArgsConstructor
     @Data
-    public static final class JobStateData implements Serializable{
+    public static final class JobStateData implements Serializable {
         Long jobId;
         JobStatus jobStatus;
         Map<PipelineLocation, PipelineStateData> pipelineStateMapperMap;
@@ -171,7 +203,7 @@ public class JobHistoryService {
 
     @AllArgsConstructor
     @Data
-    public static final class PipelineStateData implements Serializable{
+    public static final class PipelineStateData implements Serializable {
         PipelineStatus pipelineStatus;
         Map<TaskGroupLocation, ExecutionState> executionStateMap;
     }

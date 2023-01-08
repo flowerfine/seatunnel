@@ -34,6 +34,7 @@ import org.apache.seatunnel.common.constants.JobMode;
 import org.apache.seatunnel.core.starter.config.ConfigBuilder;
 import org.apache.seatunnel.engine.common.config.JobConfig;
 import org.apache.seatunnel.engine.common.exception.JobDefineCheckException;
+import org.apache.seatunnel.engine.common.loader.SeatunnelChildFirstClassLoader;
 import org.apache.seatunnel.engine.common.utils.IdGenerator;
 import org.apache.seatunnel.engine.core.dag.actions.Action;
 import org.apache.seatunnel.engine.core.dag.actions.SinkAction;
@@ -48,6 +49,7 @@ import com.hazelcast.logging.Logger;
 import lombok.Data;
 import lombok.NonNull;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 
 import java.net.URL;
@@ -107,6 +109,7 @@ public class JobConfigParser {
     }
 
     public ImmutablePair<List<Action>, Set<URL>> parse() {
+        Thread.currentThread().setContextClassLoader(new SeatunnelChildFirstClassLoader(new ArrayList<>()));
         List<? extends Config> sinkConfigs = seaTunnelJobConfig.getConfigList("sink");
         List<? extends Config> transformConfigs =
             TypesafeConfigUtils.getConfigList(seaTunnelJobConfig, "transform", Collections.emptyList());
@@ -144,10 +147,12 @@ public class JobConfigParser {
             jobConfig.getJobContext().setJobMode(EnvCommonOptions.JOB_MODE.defaultValue());
         }
 
-        if (envConfigs.hasPath(EnvCommonOptions.JOB_NAME.key())) {
-            jobConfig.setName(envConfigs.getString(EnvCommonOptions.JOB_NAME.key()));
-        } else {
-            jobConfig.setName(EnvCommonOptions.JOB_NAME.defaultValue());
+        if (StringUtils.isEmpty(jobConfig.getName())) {
+            if (envConfigs.hasPath(EnvCommonOptions.JOB_NAME.key())) {
+                jobConfig.setName(envConfigs.getString(EnvCommonOptions.JOB_NAME.key()));
+            } else {
+                jobConfig.setName(EnvCommonOptions.JOB_NAME.defaultValue());
+            }
         }
 
         if (envConfigs.hasPath(EnvCommonOptions.CHECKPOINT_INTERVAL.key())) {

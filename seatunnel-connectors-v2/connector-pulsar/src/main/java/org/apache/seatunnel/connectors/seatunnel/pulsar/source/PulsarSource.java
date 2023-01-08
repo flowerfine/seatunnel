@@ -33,18 +33,18 @@ import static org.apache.seatunnel.connectors.seatunnel.pulsar.config.SourceProp
 import static org.apache.seatunnel.connectors.seatunnel.pulsar.config.SourceProperties.POLL_TIMEOUT;
 import static org.apache.seatunnel.connectors.seatunnel.pulsar.config.SourceProperties.SUBSCRIPTION_NAME;
 import static org.apache.seatunnel.connectors.seatunnel.pulsar.config.SourceProperties.StartMode;
-import static org.apache.seatunnel.connectors.seatunnel.pulsar.config.SourceProperties.StartMode.LATEST;
-import static org.apache.seatunnel.connectors.seatunnel.pulsar.config.SourceProperties.StopMode.NEVER;
 import static org.apache.seatunnel.connectors.seatunnel.pulsar.config.SourceProperties.TOPIC;
 import static org.apache.seatunnel.connectors.seatunnel.pulsar.config.SourceProperties.TOPIC_DISCOVERY_INTERVAL;
 import static org.apache.seatunnel.connectors.seatunnel.pulsar.config.SourceProperties.TOPIC_PATTERN;
 
 import org.apache.seatunnel.api.common.PrepareFailException;
+import org.apache.seatunnel.api.common.SeaTunnelAPIErrorCode;
 import org.apache.seatunnel.api.serialization.DeserializationSchema;
 import org.apache.seatunnel.api.source.Boundedness;
 import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.api.source.SourceReader;
 import org.apache.seatunnel.api.source.SourceSplitEnumerator;
+import org.apache.seatunnel.api.source.SupportParallelism;
 import org.apache.seatunnel.api.table.type.SeaTunnelDataType;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
 import org.apache.seatunnel.common.config.CheckConfigUtil;
@@ -56,6 +56,7 @@ import org.apache.seatunnel.connectors.seatunnel.pulsar.config.PulsarClientConfi
 import org.apache.seatunnel.connectors.seatunnel.pulsar.config.PulsarConfigUtil;
 import org.apache.seatunnel.connectors.seatunnel.pulsar.config.PulsarConsumerConfig;
 import org.apache.seatunnel.connectors.seatunnel.pulsar.config.SourceProperties;
+import org.apache.seatunnel.connectors.seatunnel.pulsar.exception.PulsarConnectorException;
 import org.apache.seatunnel.connectors.seatunnel.pulsar.source.enumerator.PulsarSplitEnumerator;
 import org.apache.seatunnel.connectors.seatunnel.pulsar.source.enumerator.PulsarSplitEnumeratorState;
 import org.apache.seatunnel.connectors.seatunnel.pulsar.source.enumerator.cursor.start.StartCursor;
@@ -78,7 +79,8 @@ import java.util.Arrays;
 import java.util.regex.Pattern;
 
 @AutoService(SeaTunnelSource.class)
-public class PulsarSource<T> implements SeaTunnelSource<T, PulsarPartitionSplit, PulsarSplitEnumeratorState> {
+public class PulsarSource<T> implements SeaTunnelSource<T, PulsarPartitionSplit, PulsarSplitEnumeratorState>,
+    SupportParallelism {
     private DeserializationSchema<T> deserialization;
 
     private PulsarAdminConfig adminConfig;
@@ -103,7 +105,7 @@ public class PulsarSource<T> implements SeaTunnelSource<T, PulsarPartitionSplit,
     public void prepare(Config config) throws PrepareFailException {
         CheckResult result = CheckConfigUtil.checkAllExists(config, SUBSCRIPTION_NAME.key(), CLIENT_SERVICE_URL.key(), ADMIN_SERVICE_URL.key());
         if (!result.isSuccess()) {
-            throw new PrepareFailException(getPluginName(), PluginType.SOURCE, result.getMsg());
+            throw new PulsarConnectorException(SeaTunnelAPIErrorCode.CONFIG_VALIDATION_FAILED, String.format("PluginName: %s, PluginType: %s, Message: %s", getPluginName(), PluginType.SOURCE, result.getMsg()));
         }
 
         // admin config
@@ -155,7 +157,7 @@ public class PulsarSource<T> implements SeaTunnelSource<T, PulsarPartitionSplit,
         if (partitionDiscoverer instanceof TopicPatternDiscoverer
             && partitionDiscoveryIntervalMs > 0
             && Boundedness.BOUNDED == stopCursor.getBoundedness()) {
-            throw new IllegalArgumentException("Bounded streams do not support dynamic partition discovery.");
+            throw new PulsarConnectorException(SeaTunnelAPIErrorCode.CONFIG_VALIDATION_FAILED, "Bounded streams do not support dynamic partition discovery.");
         }
     }
 
@@ -177,12 +179,12 @@ public class PulsarSource<T> implements SeaTunnelSource<T, PulsarPartitionSplit,
                 break;
             case TIMESTAMP:
                 if (StringUtils.isBlank(config.getString(CURSOR_STARTUP_TIMESTAMP.key()))) {
-                    throw new IllegalArgumentException(String.format("The '%s' property is required when the '%s' is 'timestamp'.", CURSOR_STARTUP_TIMESTAMP.key(), CURSOR_STARTUP_MODE.key()));
+                    throw new PulsarConnectorException(SeaTunnelAPIErrorCode.OPTION_VALIDATION_FAILED, String.format("The '%s' property is required when the '%s' is 'timestamp'.", CURSOR_STARTUP_TIMESTAMP.key(), CURSOR_STARTUP_MODE.key()));
                 }
                 setOption(config, CURSOR_STARTUP_TIMESTAMP.key(), config::getLong, timestamp -> this.startCursor = StartCursor.timestamp(timestamp));
                 break;
             default:
-                throw new IllegalArgumentException(String.format("The %s mode is not supported.", startMode));
+                throw new PulsarConnectorException(SeaTunnelAPIErrorCode.OPTION_VALIDATION_FAILED, String.format("The %s mode is not supported.", startMode));
         }
     }
 
@@ -197,12 +199,12 @@ public class PulsarSource<T> implements SeaTunnelSource<T, PulsarPartitionSplit,
                 break;
             case TIMESTAMP:
                 if (StringUtils.isBlank(config.getString(CURSOR_STOP_TIMESTAMP.key()))) {
-                    throw new IllegalArgumentException(String.format("The '%s' property is required when the '%s' is 'timestamp'.", CURSOR_STOP_TIMESTAMP.key(), CURSOR_STOP_MODE.key()));
+                    throw new PulsarConnectorException(SeaTunnelAPIErrorCode.OPTION_VALIDATION_FAILED, String.format("The '%s' property is required when the '%s' is 'timestamp'.", CURSOR_STOP_TIMESTAMP.key(), CURSOR_STOP_MODE.key()));
                 }
                 setOption(config, CURSOR_STARTUP_TIMESTAMP.key(), config::getLong, timestamp -> this.stopCursor = StopCursor.timestamp(timestamp));
                 break;
             default:
-                throw new IllegalArgumentException(String.format("The %s mode is not supported.", stopMode));
+                throw new PulsarConnectorException(SeaTunnelAPIErrorCode.CONFIG_VALIDATION_FAILED, String.format("The %s mode is not supported.", stopMode));
         }
     }
 
@@ -214,12 +216,12 @@ public class PulsarSource<T> implements SeaTunnelSource<T, PulsarPartitionSplit,
         String topicPattern = config.getString(TOPIC_PATTERN.key());
         if (StringUtils.isNotBlank(topicPattern)) {
             if (this.partitionDiscoverer != null) {
-                throw new IllegalArgumentException(String.format("The properties '%s' and '%s' is exclusive.", TOPIC.key(), TOPIC_PATTERN.key()));
+                throw new PulsarConnectorException(SeaTunnelAPIErrorCode.OPTION_VALIDATION_FAILED, String.format("The properties '%s' and '%s' is exclusive.", TOPIC.key(), TOPIC_PATTERN.key()));
             }
             this.partitionDiscoverer = new TopicPatternDiscoverer(Pattern.compile(topicPattern));
         }
         if (this.partitionDiscoverer == null) {
-            throw new IllegalArgumentException(String.format("The properties '%s' or '%s' is required.", TOPIC.key(), TOPIC_PATTERN.key()));
+            throw new PulsarConnectorException(SeaTunnelAPIErrorCode.OPTION_VALIDATION_FAILED, String.format("The properties '%s' or '%s' is required.", TOPIC.key(), TOPIC_PATTERN.key()));
         }
     }
 

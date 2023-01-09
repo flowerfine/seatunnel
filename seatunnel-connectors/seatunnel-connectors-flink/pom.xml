@@ -44,5 +44,6 @@
         <module>seatunnel-connector-flink-http</module>
         <module>seatunnel-connector-flink-assert</module>
         <module>seatunnel-connector-flink-iceberg</module>
+        <module>seatunnel-connector-flink-hudi</module>
     </modules>
 </project>

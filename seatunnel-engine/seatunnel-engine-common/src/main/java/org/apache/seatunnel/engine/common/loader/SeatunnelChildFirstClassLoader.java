@@ -29,13 +29,18 @@ public class SeatunnelChildFirstClassLoader extends SeatunnelBaseClassLoader {
     private final String[] alwaysParentFirstPatterns;
     private static final String[] DEFAULT_PARENT_FIRST_PATTERNS = new String[]{
         "java.",
+        "javax.xml",
+        "org.xml",
+        "org.w3c",
+        "org.apache.hadoop",
         "scala.",
         "org.apache.seatunnel.",
         "javax.annotation.",
         "org.slf4j",
         "org.apache.log4j",
         "org.apache.logging",
-        "org.apache.commons.logging"
+        "org.apache.commons.logging",
+        "com.fasterxml.jackson"
     };
 
     public SeatunnelChildFirstClassLoader(List<URL> urls) {

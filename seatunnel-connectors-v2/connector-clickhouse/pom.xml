@@ -28,7 +28,7 @@
 
     <artifactId>connector-clickhouse</artifactId>
     <properties>
-        <clickhouse.version>0.3.2-patch9</clickhouse.version>
+        <clickhouse.version>0.3.2-patch11</clickhouse.version>
         <sshd.scp.version>2.7.0</sshd.scp.version>
     </properties>
     <dependencies>
@@ -60,6 +60,16 @@
             <groupId>com.clickhouse</groupId>
             <artifactId>clickhouse-jdbc</artifactId>
             <version>${clickhouse.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
         </dependency>
 
     </dependencies>

@@ -23,6 +23,7 @@ import org.apache.seatunnel.common.utils.RetryUtils;
 import org.apache.seatunnel.engine.common.Constant;
 import org.apache.seatunnel.engine.server.SeaTunnelServer;
 import org.apache.seatunnel.engine.server.execution.Task;
+import org.apache.seatunnel.engine.server.execution.TaskGroupContext;
 import org.apache.seatunnel.engine.server.execution.TaskLocation;
 import org.apache.seatunnel.engine.server.serializable.CheckpointDataSerializerHook;
 import org.apache.seatunnel.engine.server.task.operation.TaskOperation;
@@ -76,19 +77,22 @@ public class CheckpointFinishedOperation extends TaskOperation {
     public void run() throws Exception {
         SeaTunnelServer server = getService();
         RetryUtils.retryWithException(() -> {
-            Task task = server.getTaskExecutionService().getExecutionContext(taskLocation.getTaskGroupLocation())
-                .getTaskGroup().getTask(taskLocation.getTaskID());
             try {
+                TaskGroupContext groupContext = server.getTaskExecutionService().getExecutionContext(taskLocation.getTaskGroupLocation());
+                Task task = groupContext.getTaskGroup().getTask(taskLocation.getTaskID());
+                ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+                Thread.currentThread().setContextClassLoader(groupContext.getClassLoader());
                 if (successful) {
                     task.notifyCheckpointComplete(checkpointId);
                 } else {
                     task.notifyCheckpointAborted(checkpointId);
                 }
+                Thread.currentThread().setContextClassLoader(classLoader);
             } catch (Exception e) {
                 sneakyThrow(e);
             }
             return null;
-        }, new RetryUtils.RetryMaterial(Constant.OPERATION_RETRY_TIME, true,
+        }, new RetryUtils.RetryMaterial(Constant.OPERATION_RETRY_TIME, false,
             exception -> exception instanceof NullPointerException &&
                 !server.taskIsEnded(taskLocation.getTaskGroupLocation()), Constant.OPERATION_RETRY_SLEEP));
     }

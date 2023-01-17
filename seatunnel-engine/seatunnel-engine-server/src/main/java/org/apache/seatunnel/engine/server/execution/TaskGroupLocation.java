@@ -17,6 +17,8 @@
 
 package org.apache.seatunnel.engine.server.execution;
 
+import org.apache.seatunnel.engine.server.dag.physical.PipelineLocation;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.commons.lang3.builder.EqualsBuilder;
@@ -32,6 +34,10 @@ public class TaskGroupLocation implements Serializable {
     private final int pipelineId;
 
     private final long taskGroupId;
+
+    public PipelineLocation getPipelineLocation() {
+        return new PipelineLocation(this.jobId, this.pipelineId);
+    }
 
     @Override
     public boolean equals(Object o) {
@@ -51,5 +57,14 @@ public class TaskGroupLocation implements Serializable {
     @Override
     public int hashCode() {
         return new HashCodeBuilder(17, 37).append(jobId).append(pipelineId).append(taskGroupId).toHashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "TaskGroupLocation{" +
+            "jobId=" + jobId +
+            ", pipelineId=" + pipelineId +
+            ", taskGroupId=" + taskGroupId +
+            '}';
     }
 }

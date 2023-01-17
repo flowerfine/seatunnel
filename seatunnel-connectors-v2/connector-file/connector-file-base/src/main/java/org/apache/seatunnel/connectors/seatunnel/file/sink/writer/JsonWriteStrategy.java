@@ -20,14 +20,17 @@ package org.apache.seatunnel.connectors.seatunnel.file.sink.writer;
 import org.apache.seatunnel.api.serialization.SerializationSchema;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
-import org.apache.seatunnel.connectors.seatunnel.file.sink.config.TextFileSinkConfig;
-import org.apache.seatunnel.connectors.seatunnel.file.sink.util.FileSystemUtils;
+import org.apache.seatunnel.common.exception.CommonErrorCode;
+import org.apache.seatunnel.connectors.seatunnel.file.exception.FileConnectorException;
+import org.apache.seatunnel.connectors.seatunnel.file.sink.config.FileSinkConfig;
 import org.apache.seatunnel.format.json.JsonSerializationSchema;
 
+import io.airlift.compress.lzo.LzopCodec;
 import lombok.NonNull;
 import org.apache.hadoop.fs.FSDataOutputStream;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -37,7 +40,7 @@ public class JsonWriteStrategy extends AbstractWriteStrategy {
     private final Map<String, FSDataOutputStream> beingWrittenOutputStream;
     private final Map<String, Boolean> isFirstWrite;
 
-    public JsonWriteStrategy(TextFileSinkConfig textFileSinkConfig) {
+    public JsonWriteStrategy(FileSinkConfig textFileSinkConfig) {
         super(textFileSinkConfig);
         this.beingWrittenOutputStream = new HashMap<>();
         this.isFirstWrite = new HashMap<>();
@@ -52,6 +55,7 @@ public class JsonWriteStrategy extends AbstractWriteStrategy {
 
     @Override
     public void write(@NonNull SeaTunnelRow seaTunnelRow) {
+        super.write(seaTunnelRow);
         String filePath = getOrCreateFilePathBeingWritten(seaTunnelRow);
         FSDataOutputStream fsDataOutputStream = getOrCreateOutputStream(filePath);
         try {
@@ -63,8 +67,8 @@ public class JsonWriteStrategy extends AbstractWriteStrategy {
             }
             fsDataOutputStream.write(rowBytes);
         } catch (IOException e) {
-            log.error("write data to file {} error", filePath);
-            throw new RuntimeException(e);
+            throw new FileConnectorException(CommonErrorCode.FILE_OPERATION_FAILED,
+                    String.format("Write data to file [%s] failed", filePath), e);
         }
     }
 
@@ -74,16 +78,15 @@ public class JsonWriteStrategy extends AbstractWriteStrategy {
             try {
                 value.flush();
             } catch (IOException e) {
-                log.error("error when flush file {}", key);
-                throw new RuntimeException(e);
+                throw new FileConnectorException(CommonErrorCode.FLUSH_DATA_FAILED,
+                        String.format("Flush data to this file [%s] failed", key), e);
             } finally {
                 try {
                     value.close();
                 } catch (IOException e) {
-                    log.error("error when close output stream {}", key, e);
+                    log.warn("Close file output stream {} failed", key, e);
                 }
             }
-
             needMoveFiles.put(key, getTargetLocation(key));
         });
     }
@@ -92,12 +95,25 @@ public class JsonWriteStrategy extends AbstractWriteStrategy {
         FSDataOutputStream fsDataOutputStream = beingWrittenOutputStream.get(filePath);
         if (fsDataOutputStream == null) {
             try {
-                fsDataOutputStream = FileSystemUtils.getOutputStream(filePath);
+                switch (compressFormat) {
+                    case LZO:
+                        LzopCodec lzo = new LzopCodec();
+                        OutputStream out = lzo.createOutputStream(fileSystemUtils.getOutputStream(filePath));
+                        fsDataOutputStream = new FSDataOutputStream(out, null);
+                        break;
+                    case NONE:
+                        fsDataOutputStream = fileSystemUtils.getOutputStream(filePath);
+                        break;
+                    default:
+                        log.warn("Json file does not support this compress type: {}", compressFormat.getCompressCodec());
+                        fsDataOutputStream = fileSystemUtils.getOutputStream(filePath);
+                        break;
+                }
                 beingWrittenOutputStream.put(filePath, fsDataOutputStream);
                 isFirstWrite.put(filePath, true);
             } catch (IOException e) {
-                log.error("can not get output file stream");
-                throw new RuntimeException(e);
+                throw new FileConnectorException(CommonErrorCode.FILE_OPERATION_FAILED,
+                        String.format("Open file output stream [%s] failed", filePath), e);
             }
         }
         return fsDataOutputStream;

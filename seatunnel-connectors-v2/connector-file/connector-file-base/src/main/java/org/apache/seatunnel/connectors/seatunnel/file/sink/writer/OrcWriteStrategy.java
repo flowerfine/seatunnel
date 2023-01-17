@@ -24,11 +24,12 @@ import org.apache.seatunnel.api.table.type.MapType;
 import org.apache.seatunnel.api.table.type.SeaTunnelDataType;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
-import org.apache.seatunnel.connectors.seatunnel.file.sink.config.TextFileSinkConfig;
+import org.apache.seatunnel.common.exception.CommonErrorCode;
+import org.apache.seatunnel.connectors.seatunnel.file.exception.FileConnectorException;
+import org.apache.seatunnel.connectors.seatunnel.file.sink.config.FileSinkConfig;
 
 import lombok.NonNull;
 import org.apache.hadoop.fs.Path;
-import org.apache.orc.CompressionKind;
 import org.apache.orc.OrcFile;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.Writer;
@@ -60,13 +61,14 @@ import java.util.Map;
 public class OrcWriteStrategy extends AbstractWriteStrategy {
     private final Map<String, Writer> beingWrittenWriter;
 
-    public OrcWriteStrategy(TextFileSinkConfig textFileSinkConfig) {
-        super(textFileSinkConfig);
+    public OrcWriteStrategy(FileSinkConfig fileSinkConfig) {
+        super(fileSinkConfig);
         this.beingWrittenWriter = new HashMap<>();
     }
 
     @Override
     public void write(@NonNull SeaTunnelRow seaTunnelRow) {
+        super.write(seaTunnelRow);
         String filePath = getOrCreateFilePathBeingWritten(seaTunnelRow);
         Writer writer = getOrCreateWriter(filePath);
         TypeDescription schema = buildSchemaWithRowType();
@@ -84,7 +86,7 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
             rowBatch.reset();
         } catch (IOException e) {
             String errorMsg = String.format("Write data to orc file [%s] error", filePath);
-            throw new RuntimeException(errorMsg, e);
+            throw new FileConnectorException(CommonErrorCode.FILE_OPERATION_FAILED, errorMsg, e);
         }
     }
 
@@ -95,10 +97,11 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
                 v.close();
             } catch (IOException e) {
                 String errorMsg = String.format("Close file [%s] orc writer failed, error msg: [%s]", k, e.getMessage());
-                throw new RuntimeException(errorMsg, e);
+                throw new FileConnectorException(CommonErrorCode.WRITER_OPERATION_FAILED, errorMsg, e);
             }
             needMoveFiles.put(k, getTargetLocation(k));
         });
+        this.beingWrittenWriter.clear();
     }
 
     private Writer getOrCreateWriter(@NonNull String filePath) {
@@ -109,8 +112,7 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
             try {
                 OrcFile.WriterOptions options = OrcFile.writerOptions(getConfiguration(hadoopConf))
                     .setSchema(schema)
-                    // temporarily used snappy
-                    .compress(CompressionKind.SNAPPY)
+                    .compress(compressFormat.getOrcCompression())
                     // use orc version 0.12
                     .version(OrcFile.Version.V_0_12)
                     .overwrite(true);
@@ -119,7 +121,7 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
                 return newWriter;
             } catch (IOException e) {
                 String errorMsg = String.format("Get orc writer for file [%s] error", filePath);
-                throw new RuntimeException(errorMsg, e);
+                throw new FileConnectorException(CommonErrorCode.WRITER_OPERATION_FAILED, errorMsg, e);
             }
         }
         return writer;
@@ -165,13 +167,13 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
                 TypeDescription struct = TypeDescription.createStruct();
                 SeaTunnelDataType<?>[] fieldTypes = ((SeaTunnelRowType) type).getFieldTypes();
                 for (int i = 0; i < fieldTypes.length; i++) {
-                    struct.addField(((SeaTunnelRowType) type).getFieldName(i), buildFieldWithRowType(fieldTypes[i]));
+                    struct.addField(((SeaTunnelRowType) type).getFieldName(i).toLowerCase(), buildFieldWithRowType(fieldTypes[i]));
                 }
                 return struct;
             case NULL:
             default:
                 String errorMsg = String.format("Orc file not support this type [%s]", type.getSqlType());
-                throw new UnsupportedOperationException(errorMsg);
+                throw new FileConnectorException(CommonErrorCode.UNSUPPORTED_DATA_TYPE, errorMsg);
         }
     }
 
@@ -179,7 +181,7 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
         TypeDescription schema = TypeDescription.createStruct();
         for (Integer i : sinkColumnsIndexInRow) {
             TypeDescription fieldType = buildFieldWithRowType(seaTunnelRowType.getFieldType(i));
-            schema.addField(seaTunnelRowType.getFieldName(i), fieldType);
+            schema.addField(seaTunnelRowType.getFieldName(i).toLowerCase(), fieldType);
         }
         return schema;
     }
@@ -223,7 +225,8 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
                     setStructColumnVector(value, structColumnVector, row);
                     break;
                 default:
-                    throw new RuntimeException("Unexpected ColumnVector subtype " + vector.type);
+                    throw new FileConnectorException(CommonErrorCode.ILLEGAL_ARGUMENT,
+                            "Unsupported ColumnVector subtype" + vector.type);
             }
         }
     }
@@ -236,7 +239,9 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
                 setColumn(fields[i], structColumnVector.fields[i], row);
             }
         } else {
-            throw new RuntimeException("SeaTunnelRow type expected for field");
+            String errorMsg = String.format("SeaTunnelRow type expected for field, " +
+                    "not support this data type: [%s]", value.getClass());
+            throw new FileConnectorException(CommonErrorCode.UNSUPPORTED_DATA_TYPE, errorMsg);
         }
 
     }
@@ -257,7 +262,8 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
                 ++i;
             }
         } else {
-            throw new RuntimeException("Map type expected for field");
+            String errorMsg = String.format("Map type expected for field, this field is [%s]", value.getClass());
+            throw new FileConnectorException(CommonErrorCode.ILLEGAL_ARGUMENT, errorMsg);
         }
     }
 
@@ -268,7 +274,9 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
         } else if (value instanceof List) {
             valueArray = ((List<?>) value).toArray();
         } else {
-            throw new RuntimeException("List and Array type expected for field");
+            String errorMsg = String.format("List and Array type expected for field, " +
+                    "this field is [%s]", value.getClass());
+            throw new FileConnectorException(CommonErrorCode.ILLEGAL_ARGUMENT, errorMsg);
         }
         listColumnVector.offsets[row] = listColumnVector.childCount;
         listColumnVector.lengths[row] = valueArray.length;
@@ -284,7 +292,8 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
         if (value instanceof BigDecimal) {
             decimalColumnVector.set(row, HiveDecimal.create((BigDecimal) value));
         } else {
-            throw new RuntimeException("BigDecimal type expected for field");
+            String errorMsg = String.format("BigDecimal type expected for field, this field is [%s]", value.getClass());
+            throw new FileConnectorException(CommonErrorCode.ILLEGAL_ARGUMENT, errorMsg);
         }
     }
 
@@ -296,7 +305,8 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
         } else if (value instanceof LocalTime) {
             timestampColumnVector.set(row, Timestamp.valueOf(((LocalTime) value).atDate(LocalDate.ofEpochDay(0))));
         } else {
-            throw new RuntimeException("Time series type expected for field");
+            String errorMsg = String.format("Time series type expected for field, this field is [%s]", value.getClass());
+            throw new FileConnectorException(CommonErrorCode.ILLEGAL_ARGUMENT, errorMsg);
         }
     }
 
@@ -318,7 +328,9 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
         } else if (value instanceof LocalDate) {
             longVector.vector[row] = ((LocalDate) value).getLong(ChronoField.EPOCH_DAY);
         } else {
-            throw new RuntimeException("Long or Integer type expected for field");
+            String errorMsg = String.format("Long or Integer type expected for field, " +
+                    "this field is [%s]", value.getClass());
+            throw new FileConnectorException(CommonErrorCode.ILLEGAL_ARGUMENT, errorMsg);
         }
     }
 
@@ -340,7 +352,9 @@ public class OrcWriteStrategy extends AbstractWriteStrategy {
             Float floatValue = (Float) value;
             doubleVector.vector[rowNum] = floatValue.doubleValue();
         } else {
-            throw new RuntimeException("Double or Float type expected for field ");
+            String errorMsg = String.format("Double or Float type expected for field, " +
+                    "this field is [%s]", value.getClass());
+            throw new FileConnectorException(CommonErrorCode.ILLEGAL_ARGUMENT, errorMsg);
         }
     }
 }

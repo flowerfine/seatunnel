@@ -17,18 +17,21 @@
 
 package org.apache.seatunnel.connectors.seatunnel.clickhouse.sink.client;
 
-import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.Config.BULK_SIZE;
-import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.Config.CLICKHOUSE_PREFIX;
-import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.Config.DATABASE;
-import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.Config.FIELDS;
-import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.Config.HOST;
-import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.Config.PASSWORD;
-import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.Config.SHARDING_KEY;
-import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.Config.SPLIT_MODE;
-import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.Config.TABLE;
-import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.Config.USERNAME;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.ALLOW_EXPERIMENTAL_LIGHTWEIGHT_DELETE;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.BULK_SIZE;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.CLICKHOUSE_CONFIG;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.DATABASE;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.HOST;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.PASSWORD;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.PRIMARY_KEY;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.SHARDING_KEY;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.SPLIT_MODE;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.SUPPORT_UPSERT;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.TABLE;
+import static org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ClickhouseConfig.USERNAME;
 
 import org.apache.seatunnel.api.common.PrepareFailException;
+import org.apache.seatunnel.api.common.SeaTunnelAPIErrorCode;
 import org.apache.seatunnel.api.serialization.DefaultSerializer;
 import org.apache.seatunnel.api.serialization.Serializer;
 import org.apache.seatunnel.api.sink.SeaTunnelSink;
@@ -38,9 +41,10 @@ import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
 import org.apache.seatunnel.common.config.CheckConfigUtil;
 import org.apache.seatunnel.common.config.CheckResult;
-import org.apache.seatunnel.common.config.TypesafeConfigUtils;
 import org.apache.seatunnel.common.constants.PluginType;
+import org.apache.seatunnel.common.exception.CommonErrorCode;
 import org.apache.seatunnel.connectors.seatunnel.clickhouse.config.ReaderOption;
+import org.apache.seatunnel.connectors.seatunnel.clickhouse.exception.ClickhouseConnectorException;
 import org.apache.seatunnel.connectors.seatunnel.clickhouse.shard.Shard;
 import org.apache.seatunnel.connectors.seatunnel.clickhouse.shard.ShardMetadata;
 import org.apache.seatunnel.connectors.seatunnel.clickhouse.sink.file.ClickhouseTable;
@@ -57,9 +61,9 @@ import com.google.auto.service.AutoService;
 import com.google.common.collect.ImmutableMap;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 
@@ -76,58 +80,59 @@ public class ClickhouseSink implements SeaTunnelSink<SeaTunnelRow, ClickhouseSin
     @SuppressWarnings("checkstyle:MagicNumber")
     @Override
     public void prepare(Config config) throws PrepareFailException {
-        CheckResult result = CheckConfigUtil.checkAllExists(config, HOST, DATABASE, TABLE);
+        CheckResult result = CheckConfigUtil.checkAllExists(config, HOST.key(), DATABASE.key(), TABLE.key());
 
-        boolean isCredential = config.hasPath(USERNAME) || config.hasPath(PASSWORD);
+        boolean isCredential = config.hasPath(USERNAME.key()) || config.hasPath(PASSWORD.key());
 
         if (isCredential) {
-            result = CheckConfigUtil.checkAllExists(config, USERNAME, PASSWORD);
+            result = CheckConfigUtil.checkAllExists(config, USERNAME.key(), PASSWORD.key());
         }
 
         if (!result.isSuccess()) {
-            throw new PrepareFailException(getPluginName(), PluginType.SINK, result.getMsg());
+            throw new ClickhouseConnectorException(
+                SeaTunnelAPIErrorCode.CONFIG_VALIDATION_FAILED,
+                String.format("PluginName: %s, PluginType: %s, Message: %s",
+                    getPluginName(), PluginType.SINK, result.getMsg()));
         }
         Map<String, Object> defaultConfig = ImmutableMap.<String, Object>builder()
-                .put(BULK_SIZE, 20_000)
-                .put(SPLIT_MODE, false)
-                .build();
+            .put(BULK_SIZE.key(), BULK_SIZE.defaultValue())
+            .put(SPLIT_MODE.key(), SPLIT_MODE.defaultValue())
+            .build();
 
         config = config.withFallback(ConfigFactory.parseMap(defaultConfig));
 
         List<ClickHouseNode> nodes;
         if (!isCredential) {
-            nodes = ClickhouseUtil.createNodes(config.getString(HOST), config.getString(DATABASE),
-                    null, null);
+            nodes = ClickhouseUtil.createNodes(config.getString(HOST.key()), config.getString(DATABASE.key()),
+                null, null);
         } else {
-            nodes = ClickhouseUtil.createNodes(config.getString(HOST),
-                    config.getString(DATABASE), config.getString(USERNAME), config.getString(PASSWORD));
+            nodes = ClickhouseUtil.createNodes(config.getString(HOST.key()),
+                config.getString(DATABASE.key()), config.getString(USERNAME.key()), config.getString(PASSWORD.key()));
         }
 
         Properties clickhouseProperties = new Properties();
-        if (TypesafeConfigUtils.hasSubConfig(config, CLICKHOUSE_PREFIX)) {
-            TypesafeConfigUtils.extractSubConfig(config, CLICKHOUSE_PREFIX, false).entrySet().forEach(e -> {
-                clickhouseProperties.put(e.getKey(), String.valueOf(e.getValue().unwrapped()));
-            });
+        if (CheckConfigUtil.isValidParam(config, CLICKHOUSE_CONFIG.key())) {
+            config.getObject(CLICKHOUSE_CONFIG.key()).forEach((key, value) -> clickhouseProperties.put(key, String.valueOf(value.unwrapped())));
         }
 
         if (isCredential) {
-            clickhouseProperties.put("user", config.getString(USERNAME));
-            clickhouseProperties.put("password", config.getString(PASSWORD));
+            clickhouseProperties.put("user", config.getString(USERNAME.key()));
+            clickhouseProperties.put("password", config.getString(PASSWORD.key()));
         }
 
         ClickhouseProxy proxy = new ClickhouseProxy(nodes.get(0));
-        Map<String, String> tableSchema = proxy.getClickhouseTableSchema(config.getString(TABLE));
+        Map<String, String> tableSchema = proxy.getClickhouseTableSchema(config.getString(TABLE.key()));
         String shardKey = null;
         String shardKeyType = null;
-        if (config.getBoolean(SPLIT_MODE)) {
-            ClickhouseTable table = proxy.getClickhouseTable(config.getString(DATABASE),
-                    config.getString(TABLE));
+        ClickhouseTable table = proxy.getClickhouseTable(config.getString(DATABASE.key()),
+            config.getString(TABLE.key()));
+        if (config.getBoolean(SPLIT_MODE.key())) {
             if (!"Distributed".equals(table.getEngine())) {
-                throw new IllegalArgumentException("split mode only support table which engine is " +
-                        "'Distributed' engine at now");
+                throw new ClickhouseConnectorException(CommonErrorCode.ILLEGAL_ARGUMENT, "split mode only support table which engine is " +
+                    "'Distributed' engine at now");
             }
-            if (config.hasPath(SHARDING_KEY)) {
-                shardKey = config.getString(SHARDING_KEY);
+            if (config.hasPath(SHARDING_KEY.key())) {
+                shardKey = config.getString(SHARDING_KEY.key());
                 shardKeyType = tableSchema.get(shardKey);
             }
         }
@@ -135,36 +140,53 @@ public class ClickhouseSink implements SeaTunnelSink<SeaTunnelRow, ClickhouseSin
 
         if (isCredential) {
             metadata = new ShardMetadata(
-                    shardKey,
-                    shardKeyType,
-                    config.getString(DATABASE),
-                    config.getString(TABLE),
-                    config.getBoolean(SPLIT_MODE),
-                    new Shard(1, 1, nodes.get(0)), config.getString(USERNAME), config.getString(PASSWORD));
+                shardKey,
+                shardKeyType,
+                config.getString(DATABASE.key()),
+                config.getString(TABLE.key()),
+                table.getEngine(),
+                config.getBoolean(SPLIT_MODE.key()),
+                new Shard(1, 1, nodes.get(0)), config.getString(USERNAME.key()), config.getString(PASSWORD.key()));
         } else {
             metadata = new ShardMetadata(
-                    shardKey,
-                    shardKeyType,
-                    config.getString(DATABASE),
-                    config.getString(TABLE),
-                    config.getBoolean(SPLIT_MODE),
-                    new Shard(1, 1, nodes.get(0)));
+                shardKey,
+                shardKeyType,
+                config.getString(DATABASE.key()),
+                config.getString(TABLE.key()),
+                table.getEngine(),
+                config.getBoolean(SPLIT_MODE.key()),
+                new Shard(1, 1, nodes.get(0)));
         }
 
-        List<String> fields = new ArrayList<>();
-        if (config.hasPath(FIELDS)) {
-            fields.addAll(config.getStringList(FIELDS));
-            // check if the fields exist in schema
-            for (String field : fields) {
-                if (!tableSchema.containsKey(field)) {
-                    throw new RuntimeException("Field " + field + " does not exist in table " + config.getString(TABLE));
-                }
-            }
-        } else {
-            fields.addAll(tableSchema.keySet());
-        }
         proxy.close();
-        this.option = new ReaderOption(metadata, clickhouseProperties, fields, tableSchema, config.getInt(BULK_SIZE));
+
+        String[] primaryKeys = null;
+        if (config.hasPath(PRIMARY_KEY.key())) {
+            String primaryKey = config.getString(PRIMARY_KEY.key());
+            if (shardKey != null && !Objects.equals(primaryKey, shardKey)) {
+                throw new ClickhouseConnectorException(CommonErrorCode.ILLEGAL_ARGUMENT,
+                    "sharding_key and primary_key must be consistent to ensure correct processing of cdc events");
+            }
+            primaryKeys = new String[]{primaryKey};
+        }
+        boolean supportUpsert = SUPPORT_UPSERT.defaultValue();
+        if (config.hasPath(SUPPORT_UPSERT.key())) {
+            supportUpsert = config.getBoolean(SUPPORT_UPSERT.key());
+        }
+        boolean allowExperimentalLightweightDelete = ALLOW_EXPERIMENTAL_LIGHTWEIGHT_DELETE.defaultValue();
+        if (config.hasPath(ALLOW_EXPERIMENTAL_LIGHTWEIGHT_DELETE.key())) {
+            allowExperimentalLightweightDelete = config.getBoolean(ALLOW_EXPERIMENTAL_LIGHTWEIGHT_DELETE.key());
+        }
+        this.option = ReaderOption.builder()
+            .shardMetadata(metadata)
+            .properties(clickhouseProperties)
+            .tableEngine(table.getEngine())
+            .tableSchema(tableSchema)
+            .bulkSize(config.getInt(BULK_SIZE.key()))
+            .primaryKeys(primaryKeys)
+            .supportUpsert(supportUpsert)
+            .allowExperimentalLightweightDelete(allowExperimentalLightweightDelete)
+            .build();
     }
 
     @Override

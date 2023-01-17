@@ -17,23 +17,50 @@
 
 package org.apache.seatunnel.connectors.seatunnel.mongodb.config;
 
+import static org.apache.seatunnel.connectors.seatunnel.mongodb.config.MongodbOption.COLLECTION;
+import static org.apache.seatunnel.connectors.seatunnel.mongodb.config.MongodbOption.DATABASE;
+import static org.apache.seatunnel.connectors.seatunnel.mongodb.config.MongodbOption.MATCHQUERY;
+import static org.apache.seatunnel.connectors.seatunnel.mongodb.config.MongodbOption.URI;
+
+import org.apache.seatunnel.shade.com.typesafe.config.Config;
+
+import lombok.Builder;
+import lombok.Getter;
+
 import java.io.Serializable;
+
+
 
 /**
  * The config of mongodb
  */
+@Builder
+@Getter
 public class MongodbConfig implements Serializable {
 
-    public static final String URI = "uri";
-
-    public static final String DATABASE = "database";
-
-    public static final String COLLECTION = "collection";
-
-    public static final String SCHEMA = "schema";
-
-    public static final String FORMAT = "format";
-
-    public static final String DEFAULT_FORMAT = "json";
+    @Builder.Default
+    private String uri = URI.defaultValue();
+    @Builder.Default
+    private String database = DATABASE.defaultValue();
+    @Builder.Default
+    private String collection = COLLECTION.defaultValue();
+    @Builder.Default
+    private String matchQuery = MATCHQUERY.defaultValue();
+    public static MongodbConfig buildWithConfig(Config config) {
+        MongodbConfigBuilder builder = MongodbConfig.builder();
+        if (config.hasPath(URI.key())) {
+            builder.uri(config.getString(URI.key()));
+        }
+        if (config.hasPath(DATABASE.key())) {
+            builder.database(config.getString(DATABASE.key()));
+        }
+        if (config.hasPath(COLLECTION.key())) {
+            builder.collection(config.getString(COLLECTION.key()));
+        }
+        if (config.hasPath(MATCHQUERY.key())) {
+            builder.matchQuery(config.getString(MATCHQUERY.key()));
+        }
+        return builder.build();
+    }
 
 }

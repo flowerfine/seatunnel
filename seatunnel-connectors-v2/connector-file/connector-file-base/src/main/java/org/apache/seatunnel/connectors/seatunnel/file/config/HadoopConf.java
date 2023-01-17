@@ -19,6 +19,7 @@ package org.apache.seatunnel.connectors.seatunnel.file.config;
 
 import lombok.Data;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 
 import java.io.Serializable;
 import java.util.HashMap;
@@ -26,17 +27,32 @@ import java.util.Map;
 
 @Data
 public class HadoopConf implements Serializable {
+    private static final String HDFS_IMPL = "org.apache.hadoop.hdfs.DistributedFileSystem";
+    private static final String SCHEMA = "hdfs";
     protected Map<String, String> extraOptions = new HashMap<>();
     protected String hdfsNameKey;
-    protected String fsHdfsImpl = "org.apache.hadoop.hdfs.DistributedFileSystem";
+    protected String hdfsSitePath;
+    protected String kerberosPrincipal;
+    protected String kerberosKeytabPath;
 
     public HadoopConf(String hdfsNameKey) {
         this.hdfsNameKey = hdfsNameKey;
     }
 
+    public String getFsHdfsImpl() {
+        return HDFS_IMPL;
+    }
+
+    public String getSchema() {
+        return SCHEMA;
+    }
+
     public void setExtraOptionsForConfiguration(Configuration configuration) {
         if (!extraOptions.isEmpty()) {
             extraOptions.forEach(configuration::set);
+        }
+        if (hdfsSitePath != null) {
+            configuration.addResource(new Path(hdfsSitePath));
         }
     }
 }

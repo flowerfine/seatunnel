@@ -66,7 +66,6 @@ public class JdbcStarRocksdbIT extends AbstractJdbcIT {
         "PROPERTIES (\n" +
         "\"replication_num\" = \"1\",\n" +
         "\"in_memory\" = \"false\"," +
-        "\"in_memory\" = \"false\"," +
         "\"storage_format\" = \"DEFAULT\"" +
         ")";
 
@@ -91,7 +90,6 @@ public class JdbcStarRocksdbIT extends AbstractJdbcIT {
         "DISTRIBUTED BY HASH(`BIGINT_COL`) BUCKETS 1\n" +
         "PROPERTIES (\n" +
         "\"replication_num\" = \"1\",\n" +
-        "\"in_memory\" = \"false\"," +
         "\"in_memory\" = \"false\"," +
         "\"storage_format\" = \"DEFAULT\"" +
         ")";
@@ -120,7 +118,7 @@ public class JdbcStarRocksdbIT extends AbstractJdbcIT {
         Map<String, String> containerEnv = new HashMap<>();
         String jdbcUrl = String.format(URL, SR_PORT);
         return JdbcCase.builder().dockerImage(DOCKER_IMAGE).networkAliases(NETWORK_ALIASES).containerEnv(containerEnv).driverClass(DRIVER_CLASS)
-            .host(HOST).jdbcTemplate(URL).dataBase(DATABASE).port(SR_PORT).jdbcUrl(jdbcUrl).userName(USERNAME).password(PASSWORD).dataBase(DATABASE)
+            .host(HOST).jdbcTemplate(URL).dataBase(DATABASE).port(SR_PORT).localPort(SR_PORT).jdbcUrl(jdbcUrl).userName(USERNAME).password(PASSWORD).dataBase(DATABASE)
             .sourceTable(SOURCE_TABLE).sinkTable(SINK_TABLE).driverJar(SR_DRIVER_JAR)
             .ddlSource(DDL_SOURCE).ddlSink(DDL_SINK).initDataSql(INIT_DATA_SQL).configFile(CONFIG_FILE).seaTunnelRow(initTestData()).build();
     }

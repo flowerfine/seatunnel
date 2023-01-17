@@ -6,9 +6,12 @@
 
 Read data from Hive.
 
+:::tip
+
 In order to use this connector, You must ensure your spark/flink cluster already integrated hive. The tested hive version is 2.3.9.
 
-**Tips: Hive Sink Connector can not add partition field to the output data now**
+If you use SeaTunnel Engine, You need put seatunnel-hadoop3-3.1.4-uber.jar and hive-exec-2.3.9.jar in $SEATUNNEL_HOME/lib/ dir.
+:::
 
 ## Key features
 
@@ -18,7 +21,7 @@ In order to use this connector, You must ensure your spark/flink cluster already
 
 Read all the data in a split in a pollNext call. What splits are read will be saved in snapshot.
 
-- [x] [schema projection](../../concept/connector-v2-features.md)
+- [ ] [column projection](../../concept/connector-v2-features.md)
 - [x] [parallelism](../../concept/connector-v2-features.md)
 - [ ] [support user-defined split](../../concept/connector-v2-features.md)
 - [x] file format
@@ -30,12 +33,13 @@ Read all the data in a split in a pollNext call. What splits are read will be sa
 
 ## Options
 
-| name           | type   | required | default value |
-| -------------- | ------ | -------- | ------------- |
-| table_name     | string | yes      | -             |
-| metastore_uri  | string | yes      | -             |
-| schema         | config | No       | -             |
-| common-options |        | no       | -             |
+| name                 | type   | required | default value |
+|----------------------|--------|----------|---------------|
+| table_name           | string | yes      | -             |
+| metastore_uri        | string | yes      | -             |
+| kerberos_principal   | string | no       | -             |
+| kerberos_keytab_path | string | no       | -             | 
+| common-options       |        | no       | -             |
 
 ### table_name [string]
 
@@ -44,12 +48,6 @@ Target Hive table name eg: db1.table1
 ### metastore_uri [string]
 
 Hive metastore uri
-
-### schema [Config]
-
-#### fields [Config]
-
-the schema fields of upstream data
 
 ### common options 
 
@@ -71,3 +69,7 @@ Source plugin common parameters, please refer to [Source Common Options](common-
 ### 2.2.0-beta 2022-09-26
 
 - Add Hive Source Connector
+
+### Next version
+
+- [Improve] Support kerberos authentication ([3840](https://github.com/apache/incubator-seatunnel/pull/3840))

@@ -20,6 +20,7 @@ package org.apache.seatunnel.api.configuration;
 import static com.google.common.base.Preconditions.checkArgument;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import lombok.NonNull;
 import org.apache.commons.lang3.StringUtils;
 
 import java.lang.reflect.Type;
@@ -145,12 +146,42 @@ public class Options {
         }
 
         /**
+         * Defines that the value of the option should be a list of properties, which can be
+         * represented as {@code List<T>}.
+         */
+        public <T> TypedOptionBuilder<List<T>> listType(Class<T> option) {
+            return new TypedOptionBuilder<>(key, new TypeReference<List<T>>() {
+            });
+        }
+
+        public <T> TypedOptionBuilder<T> objectType(Class<T> option) {
+            return new TypedOptionBuilder<>(key, new TypeReference<T>() {
+                @Override
+                public Type getType() {
+                    return option;
+                }
+            });
+        }
+
+        /**
+         * Construct an option with multiple options and only one of them can be selected
+         */
+        public <T> SingleChoiceOptionBuilder<T> singleChoice(@NonNull Class<T> optionType, @NonNull List<T> optionValues) {
+            return new SingleChoiceOptionBuilder<T>(key, new TypeReference<T>() {
+                @Override
+                public Type getType() {
+                    return optionType;
+                }
+            }, optionValues);
+        }
+
+        /**
          * The value of the definition option should be represented as T.
          *
          * @param typeReference complex type reference
          */
         public <T> TypedOptionBuilder<T> type(TypeReference<T> typeReference) {
-            return new TypedOptionBuilder<T>(key, typeReference);
+            return new TypedOptionBuilder<>(key, typeReference);
         }
     }
 
@@ -185,6 +216,37 @@ public class Options {
          */
         public Option<T> noDefaultValue() {
             return new Option<>(key, typeReference, null);
+        }
+    }
+
+    public static class SingleChoiceOptionBuilder<T> {
+        private final List<T> optionValues;
+        private final String key;
+        private final TypeReference<T> typeReference;
+
+        SingleChoiceOptionBuilder(String key, TypeReference typeReference, List<T> optionValues) {
+            this.optionValues = optionValues;
+            this.key = key;
+            this.typeReference = typeReference;
+        }
+
+        /**
+         * Creates a Option with the given default value.
+         *
+         * @param value The default value for the config option
+         * @return The config option with the default value.
+         */
+        public Option<T> defaultValue(T value) {
+            return new SingleChoiceOption<T>(key, typeReference, optionValues, value);
+        }
+
+        /**
+         * Creates a Option without a default value.
+         *
+         * @return The config option without a default value.
+         */
+        public Option<T> noDefaultValue() {
+            return new SingleChoiceOption<T>(key, typeReference, optionValues, null);
         }
     }
 }

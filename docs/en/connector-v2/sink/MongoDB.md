@@ -1,4 +1,4 @@
-# MongoDb
+# MongoDB
 
 > MongoDB sink connector
 
@@ -8,21 +8,16 @@ Write data to `MongoDB`
 
 ## Key features
 
-- [x] [batch](../../concept/connector-v2-features.md)
-- [x] [stream](../../concept/connector-v2-features.md)
 - [ ] [exactly-once](../../concept/connector-v2-features.md)
-- [ ] [schema projection](../../concept/connector-v2-features.md)
-- [ ] [parallelism](../../concept/connector-v2-features.md)
-- [ ] [support user-defined split](../../concept/connector-v2-features.md)
 
 ## Options
 
 | name           | type   | required | default value |
-|--------------- | ------ |----------| ------------- |
+|--------------- |--------|----------| ------------- |
 | uri            | string | yes      | -             |
 | database       | string | yes      | -             |
 | collection     | string | yes      | -             |
-| common-options |        | no       | -             |
+| common-options | config | no       | -             |
 
 ### uri [string]
 

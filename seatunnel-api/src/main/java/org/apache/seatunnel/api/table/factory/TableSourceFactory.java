@@ -17,6 +17,7 @@
 
 package org.apache.seatunnel.api.table.factory;
 
+import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.api.source.SourceSplit;
 import org.apache.seatunnel.api.table.connector.TableSource;
 
@@ -24,9 +25,18 @@ import java.io.Serializable;
 
 /**
  * This is an SPI interface, used to create {@link TableSource}. Each plugin need to have it own implementation.
- * todo: now we have not use this interface, we directly use {@link org.apache.seatunnel.api.source.SeaTunnelSource} as the SPI interface
  */
 public interface TableSourceFactory extends Factory {
 
-    <T, SplitT extends SourceSplit, StateT extends Serializable> TableSource<T, SplitT, StateT> createSource(TableFactoryContext context);
+    /**
+     * We will never use this method now. So gave a default implement and return null.
+     *
+     * @param context TableFactoryContext
+     */
+    default <T, SplitT extends SourceSplit, StateT extends Serializable> TableSource<T, SplitT, StateT> createSource(
+        TableFactoryContext context) {
+        throw new UnsupportedOperationException("unsupported now");
+    }
+
+    Class<? extends SeaTunnelSource> getSourceClass();
 }

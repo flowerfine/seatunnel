@@ -17,7 +17,9 @@
 
 package org.apache.seatunnel.connectors.seatunnel.iceberg;
 
-import org.apache.seatunnel.connectors.seatunnel.iceberg.config.CommonConfig;
+import org.apache.seatunnel.common.exception.CommonErrorCode;
+import org.apache.seatunnel.connectors.seatunnel.iceberg.config.IcebergCatalogType;
+import org.apache.seatunnel.connectors.seatunnel.iceberg.exception.IcebergConnectorException;
 
 import lombok.NonNull;
 import org.apache.hadoop.conf.Configuration;
@@ -37,12 +39,12 @@ public class IcebergCatalogFactory implements Serializable {
     private static final long serialVersionUID = -6003040601422350869L;
 
     private final String catalogName;
-    private final String catalogType;
+    private final IcebergCatalogType catalogType;
     private final String warehouse;
     private final String uri;
 
     public IcebergCatalogFactory(@NonNull String catalogName,
-                                 @NonNull String catalogType,
+                                 @NonNull IcebergCatalogType catalogType,
                                  @NonNull String warehouse,
                                  String uri) {
         this.catalogName = catalogName;
@@ -58,13 +60,14 @@ public class IcebergCatalogFactory implements Serializable {
         properties.put(CatalogProperties.WAREHOUSE_LOCATION, warehouse);
 
         switch (catalogType) {
-            case CommonConfig.CATALOG_TYPE_HADOOP:
+            case HADOOP:
                 return hadoop(catalogName, serializableConf, properties);
-            case CommonConfig.CATALOG_TYPE_HIVE:
+            case HIVE:
                 properties.put(CatalogProperties.URI, uri);
                 return hive(catalogName, serializableConf, properties);
             default:
-                throw new UnsupportedOperationException("Unsupported catalogType: " + catalogType);
+                throw new IcebergConnectorException(CommonErrorCode.UNSUPPORTED_OPERATION,
+                    String.format("Unsupported catalogType: %s", catalogType));
         }
     }
 

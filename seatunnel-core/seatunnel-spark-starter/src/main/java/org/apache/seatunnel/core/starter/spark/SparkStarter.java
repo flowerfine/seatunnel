@@ -17,15 +17,16 @@
 
 package org.apache.seatunnel.core.starter.spark;
 
+import org.apache.seatunnel.api.env.EnvCommonOptions;
 import org.apache.seatunnel.common.config.Common;
 import org.apache.seatunnel.common.config.DeployMode;
 import org.apache.seatunnel.core.starter.Starter;
-import org.apache.seatunnel.core.starter.config.ConfigBuilder;
-import org.apache.seatunnel.core.starter.config.PluginType;
+import org.apache.seatunnel.core.starter.enums.EngineType;
+import org.apache.seatunnel.core.starter.enums.PluginType;
 import org.apache.seatunnel.core.starter.spark.args.SparkCommandArgs;
-import org.apache.seatunnel.core.starter.spark.config.StarterConstant;
 import org.apache.seatunnel.core.starter.utils.CommandLineUtils;
 import org.apache.seatunnel.core.starter.utils.CompressionUtils;
+import org.apache.seatunnel.core.starter.utils.ConfigBuilder;
 import org.apache.seatunnel.plugin.discovery.PluginIdentifier;
 import org.apache.seatunnel.plugin.discovery.seatunnel.SeaTunnelSinkPluginDiscovery;
 import org.apache.seatunnel.plugin.discovery.seatunnel.SeaTunnelSourcePluginDiscovery;
@@ -104,7 +105,8 @@ public class SparkStarter implements Starter {
      * {@link ClientModeSparkStarter} depending on deploy mode.
      */
     static SparkStarter getInstance(String[] args) {
-        SparkCommandArgs commandArgs = CommandLineUtils.parse(args, new SparkCommandArgs(), StarterConstant.SHELL_NAME, true);
+        SparkCommandArgs commandArgs = CommandLineUtils.parse(args, new SparkCommandArgs(),
+                EngineType.SPARK.getStarterShellName(), true);
         DeployMode deployMode = commandArgs.getDeployMode();
         switch (deployMode) {
             case CLUSTER:
@@ -122,7 +124,11 @@ public class SparkStarter implements Starter {
         Common.setDeployMode(commandArgs.getDeployMode());
         Common.setStarter(true);
         this.jars.addAll(Common.getPluginsJarDependencies());
+        this.jars.addAll(Common.getLibJars());
         this.jars.addAll(getConnectorJarDependencies());
+        this.jars.addAll(new ArrayList<>(Common.getThirdPartyJars(sparkConf.getOrDefault(EnvCommonOptions.JARS.key(), ""))));
+        // TODO: override job name in command args, because in spark cluster deploy mode command-line arguments are read first
+        // if user has not specified job with command line, the job name config in file will not work
         return buildFinal();
     }
 
@@ -131,19 +137,19 @@ public class SparkStarter implements Starter {
      */
     private void setSparkConf() throws FileNotFoundException {
         commandArgs.getVariables()
-                .stream()
-                .filter(Objects::nonNull)
-                .map(variable -> variable.split("=", 2))
-                .filter(pair -> pair.length == 2)
-                .forEach(pair -> System.setProperty(pair[0], pair[1]));
+            .stream()
+            .filter(Objects::nonNull)
+            .map(variable -> variable.split("=", 2))
+            .filter(pair -> pair.length == 2)
+            .forEach(pair -> System.setProperty(pair[0], pair[1]));
         this.sparkConf = getSparkConf(commandArgs.getConfigFile());
         String driverJavaOpts = this.sparkConf.getOrDefault("spark.driver.extraJavaOptions", "");
         String executorJavaOpts = this.sparkConf.getOrDefault("spark.executor.extraJavaOptions", "");
         if (!commandArgs.getVariables().isEmpty()) {
             String properties = commandArgs.getVariables()
-                    .stream()
-                    .map(v -> "-D" + v)
-                    .collect(Collectors.joining(" "));
+                .stream()
+                .map(v -> "-D" + v)
+                .collect(Collectors.joining(" "));
             driverJavaOpts += " " + properties;
             executorJavaOpts += " " + properties;
             this.sparkConf.put("spark.driver.extraJavaOptions", driverJavaOpts.trim());
@@ -160,13 +166,13 @@ public class SparkStarter implements Starter {
             throw new FileNotFoundException("config file '" + file + "' does not exists!");
         }
         Config appConfig = ConfigFactory.parseFile(file)
-                .resolve(ConfigResolveOptions.defaults().setAllowUnresolved(true))
-                .resolveWith(ConfigFactory.systemProperties(), ConfigResolveOptions.defaults().setAllowUnresolved(true));
+            .resolve(ConfigResolveOptions.defaults().setAllowUnresolved(true))
+            .resolveWith(ConfigFactory.systemProperties(), ConfigResolveOptions.defaults().setAllowUnresolved(true));
 
         return appConfig.getConfig("env")
-                .entrySet()
-                .stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().unwrapped().toString()));
+            .entrySet()
+            .stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().unwrapped().toString()));
     }
 
     /**
@@ -177,7 +183,7 @@ public class SparkStarter implements Starter {
         if (!Files.exists(pluginRootDir) || !Files.isDirectory(pluginRootDir)) {
             return Collections.emptyList();
         }
-        Config config = new ConfigBuilder(Paths.get(commandArgs.getConfigFile())).getConfig();
+        Config config = ConfigBuilder.of(commandArgs.getConfigFile());
         Set<URL> pluginJars = new HashSet<>();
         SeaTunnelSourcePluginDiscovery seaTunnelSourcePluginDiscovery = new SeaTunnelSourcePluginDiscovery();
         SeaTunnelSinkPluginDiscovery seaTunnelSinkPluginDiscovery = new SeaTunnelSinkPluginDiscovery();
@@ -192,15 +198,21 @@ public class SparkStarter implements Starter {
     protected List<String> buildFinal() {
         List<String> commands = new ArrayList<>();
         commands.add("${SPARK_HOME}/bin/spark-submit");
-        appendOption(commands, "--class", SeatunnelSpark.class.getName());
+        appendOption(commands, "--class", SeaTunnelSpark.class.getName());
         appendOption(commands, "--name", this.commandArgs.getJobName());
         appendOption(commands, "--master", this.commandArgs.getMaster());
-        appendOption(commands, "--deploy-mode", this.commandArgs.getDeployMode().getName());
+        appendOption(commands, "--deploy-mode", this.commandArgs.getDeployMode().getDeployMode());
         appendJars(commands, this.jars);
         appendFiles(commands, this.files);
         appendSparkConf(commands, this.sparkConf);
         appendAppJar(commands);
-        appendArgs(commands, args);
+        appendOption(commands, "--config", this.commandArgs.getConfigFile());
+        appendOption(commands, "--master", this.commandArgs.getMaster());
+        appendOption(commands, "--deploy-mode", this.commandArgs.getDeployMode().getDeployMode());
+        appendOption(commands, "--name", this.commandArgs.getJobName());
+        if (this.commandArgs.isCheckConfig()) {
+            commands.add("--check");
+        }
         return commands;
     }
 
@@ -232,8 +244,8 @@ public class SparkStarter implements Starter {
     protected void appendPaths(List<String> commands, String option, List<Path> paths) {
         if (!paths.isEmpty()) {
             String values = paths.stream()
-                    .map(Path::toString)
-                    .collect(Collectors.joining(","));
+                .map(Path::toString)
+                .collect(Collectors.joining(","));
             appendOption(commands, option, values);
         }
     }
@@ -250,17 +262,10 @@ public class SparkStarter implements Starter {
     }
 
     /**
-     * append original commandline args to StringBuilder
-     */
-    protected void appendArgs(List<String> commands, String[] args) {
-        commands.addAll(Arrays.asList(args));
-    }
-
-    /**
      * append appJar to StringBuilder
      */
     protected void appendAppJar(List<String> commands) {
-        commands.add(Common.appLibDir().resolve("seatunnel-spark-starter.jar").toString());
+        commands.add(Common.appStarterDir().resolve(EngineType.SPARK.getStarterJarName()).toString());
     }
 
     @SuppressWarnings("checkstyle:Indentation")
@@ -268,8 +273,8 @@ public class SparkStarter implements Starter {
         return Arrays.stream(pluginTypes).flatMap((Function<PluginType, Stream<PluginIdentifier>>) pluginType -> {
             List<? extends Config> configList = config.getConfigList(pluginType.getType());
             return configList.stream()
-                    .map(pluginConfig -> PluginIdentifier.of("seatunnel", pluginType.getType(),
-                            pluginConfig.getString("plugin_name")));
+                .map(pluginConfig -> PluginIdentifier.of("seatunnel", pluginType.getType(),
+                    pluginConfig.getString("plugin_name")));
         }).collect(Collectors.toList());
     }
 

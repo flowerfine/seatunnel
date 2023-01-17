@@ -1,6 +1,6 @@
-# MongoDb
+# MongoDB
 
-> MongoDb source connector
+> MongoDB source connector
 
 ## Description
 
@@ -11,7 +11,7 @@ Read data from MongoDB.
 - [x] [batch](../../concept/connector-v2-features.md)
 - [ ] [stream](../../concept/connector-v2-features.md)
 - [ ] [exactly-once](../../concept/connector-v2-features.md)
-- [x] [schema projection](../../concept/connector-v2-features.md)
+- [x] [column projection](../../concept/connector-v2-features.md)
 - [ ] [parallelism](../../concept/connector-v2-features.md)
 - [ ] [support user-defined split](../../concept/connector-v2-features.md)
 
@@ -22,8 +22,9 @@ Read data from MongoDB.
 | uri            | string | yes      | -             |
 | database       | string | yes      | -             |
 | collection     | string | yes      | -             |
+| matchQuery     | string | no       | -             |
 | schema         | object | yes      | -             |
-| common-options |        | yes      | -             |
+| common-options | config | no       | -             |
 
 ### uri [string]
 
@@ -36,6 +37,10 @@ MongoDB database
 ### collection [string]
 
 MongoDB collection
+
+### matchQuery [string]
+
+MatchQuery is a JSON string that specifies the selection criteria using query operators for the documents to be returned from the collection.
 
 ### schema [object]
 
@@ -66,6 +71,7 @@ mongodb {
     uri = "mongodb://username:password@127.0.0.1:27017/mypost?retryWrites=true&writeConcern=majority"
     database = "mydatabase"
     collection = "mycollection"
+    matchQuery = "{"id":3}"
     schema {
       fields {
         id = int
@@ -82,3 +88,7 @@ mongodb {
 ### 2.2.0-beta 2022-09-26
 
 - Add MongoDB Source Connector
+
+### Next Version
+
+- common-options is not a required option

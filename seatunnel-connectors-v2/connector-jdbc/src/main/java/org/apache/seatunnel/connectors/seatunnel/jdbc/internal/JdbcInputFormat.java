@@ -20,8 +20,12 @@ package org.apache.seatunnel.connectors.seatunnel.jdbc.internal;
 
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
+import org.apache.seatunnel.common.exception.CommonErrorCode;
+import org.apache.seatunnel.connectors.seatunnel.jdbc.exception.JdbcConnectorErrorCode;
+import org.apache.seatunnel.connectors.seatunnel.jdbc.exception.JdbcConnectorException;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.connection.JdbcConnectionProvider;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.converter.JdbcRowConverter;
+import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.JdbcDialect;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.source.JdbcSourceSplit;
 
 import org.slf4j.Logger;
@@ -47,7 +51,7 @@ import java.sql.Timestamp;
 
 public class JdbcInputFormat implements Serializable {
 
-    protected static final long serialVersionUID = 2L;
+    private static final long serialVersionUID = 2L;
     protected static final Logger LOG = LoggerFactory.getLogger(JdbcInputFormat.class);
 
     protected JdbcConnectionProvider connectionProvider;
@@ -63,19 +67,22 @@ public class JdbcInputFormat implements Serializable {
 
     protected boolean hasNext;
 
+    protected JdbcDialect jdbcDialect;
+
     public JdbcInputFormat(JdbcConnectionProvider connectionProvider,
-                           JdbcRowConverter jdbcRowConverter,
+                           JdbcDialect jdbcDialect,
                            SeaTunnelRowType typeInfo,
                            String queryTemplate,
                            int fetchSize,
                            Boolean autoCommit
     ) {
         this.connectionProvider = connectionProvider;
-        this.jdbcRowConverter = jdbcRowConverter;
+        this.jdbcRowConverter = jdbcDialect.getRowConverter();
         this.typeInfo = typeInfo;
         this.queryTemplate = queryTemplate;
         this.fetchSize = fetchSize;
         this.autoCommit = autoCommit;
+        this.jdbcDialect = jdbcDialect;
     }
 
     public void openInputFormat() {
@@ -89,14 +96,11 @@ public class JdbcInputFormat implements Serializable {
                 dbConn.setAutoCommit(autoCommit);
             }
 
-            statement = dbConn.prepareStatement(queryTemplate);
-            if (fetchSize == Integer.MIN_VALUE || fetchSize > 0) {
-                statement.setFetchSize(fetchSize);
-            }
+            statement = jdbcDialect.creatPreparedStatement(dbConn, queryTemplate, fetchSize);
         } catch (SQLException se) {
-            throw new IllegalArgumentException("open() failed." + se.getMessage(), se);
+            throw new JdbcConnectorException(JdbcConnectorErrorCode.CONNECT_DATABASE_FAILED, "open() failed." + se.getMessage(), se);
         } catch (ClassNotFoundException cnfe) {
-            throw new IllegalArgumentException(
+            throw new JdbcConnectorException(CommonErrorCode.CLASS_NOT_FOUND,
                 "JDBC-Class not found. - " + cnfe.getMessage(), cnfe);
         }
     }
@@ -126,6 +130,9 @@ public class JdbcInputFormat implements Serializable {
      */
     public void open(JdbcSourceSplit inputSplit) throws IOException {
         try {
+            if (!connectionProvider.isConnectionValid()) {
+                openInputFormat();
+            }
             Object[] parameterValues = inputSplit.getParameterValues();
             if (parameterValues != null) {
                 for (int i = 0; i < parameterValues.length; i++) {
@@ -158,7 +165,7 @@ public class JdbcInputFormat implements Serializable {
                         statement.setArray(i + 1, (Array) param);
                     } else {
                         // extends with other types if needed
-                        throw new IllegalArgumentException(
+                        throw new JdbcConnectorException(CommonErrorCode.UNSUPPORTED_DATA_TYPE,
                             "open() failed. Parameter "
                                 + i
                                 + " of type "
@@ -170,7 +177,7 @@ public class JdbcInputFormat implements Serializable {
             resultSet = statement.executeQuery();
             hasNext = resultSet.next();
         } catch (SQLException se) {
-            throw new IllegalArgumentException("open() failed." + se.getMessage(), se);
+            throw new JdbcConnectorException(CommonErrorCode.SQL_OPERATION_FAILED, "open() failed." + se.getMessage(), se);
         }
     }
 
@@ -195,26 +202,26 @@ public class JdbcInputFormat implements Serializable {
      *
      * @return boolean value indication whether all data has been read.
      */
-    public boolean reachedEnd() throws IOException {
+    public boolean reachedEnd() {
         return !hasNext;
     }
 
     /**
      * Convert a row of data to seatunnelRow
      */
-    public SeaTunnelRow nextRecord() throws IOException {
+    public SeaTunnelRow nextRecord() {
         try {
             if (!hasNext) {
                 return null;
             }
-            SeaTunnelRow seaTunnelRow = jdbcRowConverter.toInternal(resultSet, resultSet.getMetaData(), typeInfo);
+            SeaTunnelRow seaTunnelRow = jdbcRowConverter.toInternal(resultSet, typeInfo);
             // update hasNext after we've read the record
             hasNext = resultSet.next();
             return seaTunnelRow;
         } catch (SQLException se) {
-            throw new IOException("Couldn't read data - " + se.getMessage(), se);
+            throw new JdbcConnectorException(CommonErrorCode.SQL_OPERATION_FAILED, "Couldn't read data - " + se.getMessage(), se);
         } catch (NullPointerException npe) {
-            throw new IOException("Couldn't access resultSet", npe);
+            throw new JdbcConnectorException(CommonErrorCode.SQL_OPERATION_FAILED, "Couldn't access resultSet", npe);
         }
     }
 }

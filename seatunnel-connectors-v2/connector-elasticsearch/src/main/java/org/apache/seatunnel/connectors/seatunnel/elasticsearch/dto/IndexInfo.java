@@ -19,35 +19,32 @@ package org.apache.seatunnel.connectors.seatunnel.elasticsearch.dto;
 
 import org.apache.seatunnel.connectors.seatunnel.elasticsearch.config.SinkConfig;
 
+import org.apache.seatunnel.shade.com.typesafe.config.Config;
+
+import lombok.Data;
+
 /**
  * index config by seatunnel
  */
+@Data
 public class IndexInfo {
 
     private String index;
     private String type;
+    private String[] primaryKeys;
+    private String keyDelimiter;
 
-    public IndexInfo(org.apache.seatunnel.shade.com.typesafe.config.Config pluginConfig) {
-        index = pluginConfig.getString(SinkConfig.INDEX);
-        if (pluginConfig.hasPath(SinkConfig.INDEX_TYPE)) {
-            type = pluginConfig.getString(SinkConfig.INDEX_TYPE);
+    public IndexInfo(Config pluginConfig) {
+        index = pluginConfig.getString(SinkConfig.INDEX.key());
+        if (pluginConfig.hasPath(SinkConfig.INDEX_TYPE.key())) {
+            type = pluginConfig.getString(SinkConfig.INDEX_TYPE.key());
+        }
+        if (pluginConfig.hasPath(SinkConfig.PRIMARY_KEYS.key())) {
+            primaryKeys = pluginConfig.getStringList(SinkConfig.PRIMARY_KEYS.key()).toArray(new String[0]);
+        }
+        keyDelimiter = SinkConfig.KEY_DELIMITER.defaultValue();
+        if (pluginConfig.hasPath(SinkConfig.KEY_DELIMITER.key())) {
+            keyDelimiter = pluginConfig.getString(SinkConfig.KEY_DELIMITER.key());
         }
     }
-
-    public String getIndex() {
-        return index;
-    }
-
-    public void setIndex(String index) {
-        this.index = index;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
 }

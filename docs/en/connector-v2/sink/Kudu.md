@@ -11,7 +11,6 @@ Write data to Kudu.
 ## Key features
 
 - [ ] [exactly-once](../../concept/connector-v2-features.md)
-- [ ] [schema projection](../../concept/connector-v2-features.md)
 
 ## Options
 
@@ -42,7 +41,7 @@ Sink plugin common parameters, please refer to [Sink Common Options](common-opti
 
 ```bash
 
- kuduSink {
+ kudu {
       kudu_master = "192.168.88.110:7051"
       kudu_table = "studentlyhresultflink"
       save_mode="append"
@@ -58,3 +57,7 @@ Sink plugin common parameters, please refer to [Sink Common Options](common-opti
 
 ### 2.3.0-beta 2022-10-20
 - [Improve] Kudu Sink Connector Support to upsert row ([2881](https://github.com/apache/incubator-seatunnel/pull/2881))
+
+### Next Version
+
+- Change plugin name from `KuduSink` to `Kudu` [3432](https://github.com/apache/incubator-seatunnel/pull/3432)

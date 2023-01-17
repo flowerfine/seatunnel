@@ -11,7 +11,6 @@ Write data to Neo4j.
 ## Key features
 
 - [ ] [exactly-once](../../concept/connector-v2-features.md)
-- [ ] [schema projection](../../concept/connector-v2-features.md)
 
 ## Options
 
@@ -27,7 +26,7 @@ Write data to Neo4j.
 | queryParamPosition         | Object | Yes      | -             |
 | max_transaction_retry_time | Long   | No       | 30            |
 | max_connection_timeout     | Long   | No       | 30            |
-| common-options             |        | no       | -             |
+| common-options             | config | no       | -             |
 
 ### uri [string]
 The URI of the Neo4j database. Refer to a case: `neo4j://localhost:7687`

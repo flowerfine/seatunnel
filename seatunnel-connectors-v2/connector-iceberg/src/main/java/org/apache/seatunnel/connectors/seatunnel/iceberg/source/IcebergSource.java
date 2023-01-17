@@ -25,6 +25,8 @@ import org.apache.seatunnel.api.source.Boundedness;
 import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.api.source.SourceReader;
 import org.apache.seatunnel.api.source.SourceSplitEnumerator;
+import org.apache.seatunnel.api.source.SupportColumnProjection;
+import org.apache.seatunnel.api.source.SupportParallelism;
 import org.apache.seatunnel.api.table.type.SeaTunnelDataType;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
@@ -54,7 +56,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 @AutoService(SeaTunnelSource.class)
-public class IcebergSource implements SeaTunnelSource<SeaTunnelRow, IcebergFileScanTaskSplit, IcebergSplitEnumeratorState> {
+public class IcebergSource implements SeaTunnelSource<SeaTunnelRow, IcebergFileScanTaskSplit, IcebergSplitEnumeratorState>,
+    SupportParallelism, SupportColumnProjection {
 
     private static final long serialVersionUID = 4343414808223919870L;
 
@@ -97,7 +100,7 @@ public class IcebergSource implements SeaTunnelSource<SeaTunnelRow, IcebergFileS
             columnNames.toArray(new String[0]),
             columnDataTypes.toArray(new SeaTunnelDataType[0]));
 
-        CheckResult checkResult = CheckConfigUtil.checkAllExists(pluginConfig, CommonConfig.KEY_FIELDS);
+        CheckResult checkResult = CheckConfigUtil.checkAllExists(pluginConfig, CommonConfig.KEY_FIELDS.key());
         if (checkResult.isSuccess()) {
             SeaTunnelSchema configSchema = SeaTunnelSchema.buildWithConfig(pluginConfig);
             SeaTunnelRowType projectedRowType = configSchema.getSeaTunnelRowType();

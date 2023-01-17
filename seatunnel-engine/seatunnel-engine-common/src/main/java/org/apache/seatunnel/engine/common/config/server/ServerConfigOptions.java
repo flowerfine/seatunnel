@@ -22,12 +22,16 @@ import org.apache.seatunnel.api.configuration.Options;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
+import java.util.Map;
+
 @SuppressWarnings("checkstyle:MagicNumber")
 public class ServerConfigOptions {
 
     public static final Option<Integer> BACKUP_COUNT = Options.key("backup-count").intType().defaultValue(1).withDescription("The number of backup copies of each partition.");
 
     public static final Option<Integer> PRINT_EXECUTION_INFO_INTERVAL = Options.key("print-execution-info-interval").intType().defaultValue(60).withDescription("The interval (in seconds) between two consecutive executions of the print execution info task.");
+
+    public static final Option<Integer> PRINT_JOB_METRICS_INFO_INTERVAL = Options.key("print-job-metrics-info-interval").intType().defaultValue(60).withDescription("The interval (in seconds) of job print metrics info");
 
     public static final Option<Boolean> DYNAMIC_SLOT = Options.key("dynamic-slot").booleanType().defaultValue(true).withDescription("Whether to use dynamic slot.");
 
@@ -53,4 +57,7 @@ public class ServerConfigOptions {
 
     public static final Option<CheckpointConfig> CHECKPOINT = Options.key("checkpoint").type(new TypeReference<CheckpointConfig>() {
     }).defaultValue(new CheckpointConfig()).withDescription("The checkpoint configuration.");
+
+    public static final Option<Map<String, String>> CHECKPOINT_STORAGE_PLUGIN_CONFIG = Options.key("plugin-config").type(new TypeReference<Map<String, String>>() {
+    }).noDefaultValue().withDescription("The checkpoint storage instance configuration.");
 }

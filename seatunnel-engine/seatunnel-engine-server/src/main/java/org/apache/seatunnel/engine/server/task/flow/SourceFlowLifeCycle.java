@@ -21,6 +21,7 @@ import static org.apache.seatunnel.engine.common.utils.ExceptionUtil.sneaky;
 import static org.apache.seatunnel.engine.server.task.AbstractTask.serializeStates;
 
 import org.apache.seatunnel.api.serialization.Serializer;
+import org.apache.seatunnel.api.source.SourceEvent;
 import org.apache.seatunnel.api.source.SourceReader;
 import org.apache.seatunnel.api.source.SourceSplit;
 import org.apache.seatunnel.api.table.type.Record;
@@ -36,6 +37,7 @@ import org.apache.seatunnel.engine.server.task.operation.GetTaskGroupAddressOper
 import org.apache.seatunnel.engine.server.task.operation.source.RequestSplitOperation;
 import org.apache.seatunnel.engine.server.task.operation.source.RestoredSplitOperation;
 import org.apache.seatunnel.engine.server.task.operation.source.SourceNoMoreElementOperation;
+import org.apache.seatunnel.engine.server.task.operation.source.SourceReaderEventOperation;
 import org.apache.seatunnel.engine.server.task.operation.source.SourceRegisterOperation;
 import org.apache.seatunnel.engine.server.task.record.Barrier;
 
@@ -46,6 +48,7 @@ import com.hazelcast.logging.Logger;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -146,6 +149,17 @@ public class SourceFlowLifeCycle<T, SplitT extends SourceSplit> extends ActionFl
         }
     }
 
+    public void sendSourceEventToEnumerator(SourceEvent sourceEvent) {
+        try {
+            runningTask.getExecutionContext().sendToMember(
+                new SourceReaderEventOperation(enumeratorTaskLocation, currentTaskLocation, sourceEvent),
+                enumeratorTaskAddress).get();
+        } catch (InterruptedException | ExecutionException e) {
+            LOGGER.warning("source request split failed", e);
+            throw new RuntimeException(e);
+        }
+    }
+
     public void receivedSplits(List<SplitT> splits) {
         if (splits.isEmpty()) {
             reader.handleNoMoreSplits();
@@ -187,7 +201,7 @@ public class SourceFlowLifeCycle<T, SplitT extends SourceSplit> extends ActionFl
         }
         List<SplitT> splits = actionStateList.stream()
             .map(ActionSubtaskState::getState)
-            .flatMap(Collection::stream)
+            .flatMap(Collection::stream).filter(Objects::nonNull)
             .map(bytes -> sneaky(() -> splitSerializer.deserialize(bytes)))
             .collect(Collectors.toList());
         try {

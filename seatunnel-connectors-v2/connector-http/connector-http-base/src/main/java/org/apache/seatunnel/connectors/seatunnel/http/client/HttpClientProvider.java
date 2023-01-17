@@ -26,6 +26,7 @@ import com.github.rholder.retry.RetryerBuilder;
 import com.github.rholder.retry.StopStrategies;
 import com.github.rholder.retry.WaitStrategies;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
@@ -100,11 +101,11 @@ public class HttpClientProvider implements AutoCloseable {
             .build();
     }
 
-    public HttpResponse execute(String url, String method, Map<String, String> headers, Map<String, String> params) throws Exception {
+    public HttpResponse execute(String url, String method, Map<String, String> headers, Map<String, String> params, String body) throws Exception {
         // convert method option to uppercase
         method = method.toUpperCase(Locale.ROOT);
         if (HttpPost.METHOD_NAME.equals(method)) {
-            return doPost(url, headers, params);
+            return doPost(url, headers, params, body);
         }
         if (HttpGet.METHOD_NAME.equals(method)) {
             return doGet(url, headers, params);
@@ -244,6 +245,31 @@ public class HttpClientProvider implements AutoCloseable {
     }
 
     /**
+     * Send a post request with request headers , request parameters and request body
+     *
+     * @param url     request address
+     * @param headers request header map
+     * @param params  request parameter map
+     * @param body    request body
+     * @return http response result
+     * @throws Exception information
+     */
+    public HttpResponse doPost(String url, Map<String, String> headers, Map<String, String> params, String body) throws Exception {
+        // create a new http get
+        HttpPost httpPost = new HttpPost(url);
+        // set default request config
+        httpPost.setConfig(REQUEST_CONFIG);
+        // set request header
+        addHeaders(httpPost, headers);
+        // set request params
+        addParameters(httpPost, params);
+        // add body in request
+        addBody(httpPost, body);
+        // return http response
+        return getResponse(httpPost);
+    }
+
+    /**
      * Send a put request without request parameters
      *
      * @param url request address
@@ -357,6 +383,11 @@ public class HttpClientProvider implements AutoCloseable {
 
     private void addBody(HttpEntityEnclosingRequestBase request, String body) {
         request.addHeader(HTTP.CONTENT_TYPE, APPLICATION_JSON);
+
+        if (StringUtils.isBlank(body)) {
+            body = "";
+        }
+
         StringEntity entity = new StringEntity(body, ContentType.APPLICATION_JSON);
         entity.setContentEncoding(new BasicHeader(HTTP.CONTENT_TYPE, APPLICATION_JSON));
         request.setEntity(entity);

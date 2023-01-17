@@ -6,9 +6,12 @@
 
 Write data to Hive.
 
+:::tip
+
 In order to use this connector, You must ensure your spark/flink cluster already integrated hive. The tested hive version is 2.3.9.
 
-**Tips: Hive Sink Connector not support array, map and struct datatype now**
+If you use SeaTunnel Engine, You need put seatunnel-hadoop3-3.1.4-uber.jar and hive-exec-2.3.9.jar in $SEATUNNEL_HOME/lib/ dir.
+:::
 
 ## Key features
 
@@ -16,23 +19,25 @@ In order to use this connector, You must ensure your spark/flink cluster already
 
 By default, we use 2PC commit to ensure `exactly-once`
 
-- [ ] [schema projection](../../concept/connector-v2-features.md)
 - [x] file format
   - [x] text
+  - [x] csv
   - [x] parquet
   - [x] orc
+  - [x] json
+- [x] compress codec
+  - [x] lzo
 
 ## Options
 
-| name                  | type   | required                                    | default value                                                 |
-|-----------------------| ------ |---------------------------------------------| ------------------------------------------------------------- |
-| table_name            | string | yes                                         | -                                                              |
-| metastore_uri         | string | yes                                         | -                                                              |
-| partition_by          | array  | required if hive sink table have partitions | -                                                             |
-| sink_columns          | array  | no                                          | When this parameter is empty, all fields are sink columns     |
-| is_enable_transaction | boolean| no                                          | true                                                          |
-| save_mode             | string | no                                          | "append"                                                      |
-| common-options        |        | no                                  | -      |
+| name                 | type   | required | default value |
+|----------------------|--------|----------|---------------|
+| table_name           | string | yes      | -             |
+| metastore_uri        | string | yes      | -             |
+| compress_codec       | string | no       | none          |
+| kerberos_principal   | string | no       | -             |
+| kerberos_keytab_path | string | no       | -             |
+| common-options       |        | no       | -             |
 
 ### table_name [string]
 
@@ -42,26 +47,13 @@ Target Hive table name eg: db1.table1
 
 Hive metastore uri
 
-### partition_by [array]
+### kerberos_principal [string]
 
-Partition data based on selected fields
+The principal of kerberos
 
-### sink_columns [array]
+### kerberos_keytab_path [string]
 
-Which columns need be write to hive, default value is all of the columns get from `Transform` or `Source`.
-The order of the fields determines the order in which the file is actually written.
-
-### is_enable_transaction [boolean]
-
-If `is_enable_transaction` is true, we will ensure that data will not be lost or duplicated when it is written to the target directory.
-
-Only support `true` now.
-
-### save_mode [string]
-
-Storage mode, we need support `overwrite` and `append`. `append` is now supported.
-
-Streaming Job not support `overwrite`.
+The keytab path of kerberos
 
 ### common options
 
@@ -134,7 +126,7 @@ The job config file can like this:
 ```
 env {
   # You can set flink configuration here
-  execution.parallelism = 3
+  parallelism = 3
   job.name="test_hive_source_to_hive"
 }
 
@@ -145,17 +137,12 @@ source {
   }
 }
 
-transform {
-}
-
 sink {
   # choose stdout output plugin to output data to console
 
   Hive {
     table_name = "test_hive.test_hive_sink_text_simple"
     metastore_uri = "thrift://ctyun7:9083"
-    partition_by = ["test_par1", "test_par2"]
-    sink_columns = ["test_tinyint", "test_smallint", "test_int", "test_bigint", "test_boolean", "test_float", "test_double", "test_string", "test_binary", "test_timestamp", "test_decimal", "test_char", "test_varchar", "test_date", "test_par1", "test_par2"]
   }
 }
 ```
@@ -168,3 +155,14 @@ sink {
 
 ### 2.3.0-beta 2022-10-20
 - [Improve] Hive Sink supports automatic partition repair ([3133](https://github.com/apache/incubator-seatunnel/pull/3133))
+
+### 2.3.0 2022-12-30
+- [BugFix] Fixed the following bugs that failed to write data to files ([3258](https://github.com/apache/incubator-seatunnel/pull/3258))
+  - When field from upstream is null it will throw NullPointerException
+  - Sink columns mapping failed
+  - When restore writer from states getting transaction directly failed
+
+### Next version
+
+- [Improve] Support kerberos authentication ([3840](https://github.com/apache/incubator-seatunnel/pull/3840))
+- [Improve] Added partition_dir_expression validation logic ([3886](https://github.com/apache/incubator-seatunnel/pull/3886))

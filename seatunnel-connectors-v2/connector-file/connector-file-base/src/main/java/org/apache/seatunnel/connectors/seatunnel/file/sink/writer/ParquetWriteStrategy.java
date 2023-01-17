@@ -24,8 +24,10 @@ import org.apache.seatunnel.api.table.type.MapType;
 import org.apache.seatunnel.api.table.type.SeaTunnelDataType;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
+import org.apache.seatunnel.common.exception.CommonErrorCode;
 import org.apache.seatunnel.connectors.seatunnel.file.config.HadoopConf;
-import org.apache.seatunnel.connectors.seatunnel.file.sink.config.TextFileSinkConfig;
+import org.apache.seatunnel.connectors.seatunnel.file.exception.FileConnectorException;
+import org.apache.seatunnel.connectors.seatunnel.file.sink.config.FileSinkConfig;
 
 import lombok.NonNull;
 import org.apache.avro.Conversions;
@@ -40,7 +42,6 @@ import org.apache.parquet.avro.AvroSchemaConverter;
 import org.apache.parquet.column.ParquetProperties;
 import org.apache.parquet.hadoop.ParquetFileWriter;
 import org.apache.parquet.hadoop.ParquetWriter;
-import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.parquet.hadoop.util.HadoopOutputFile;
 import org.apache.parquet.schema.ConversionPatterns;
 import org.apache.parquet.schema.LogicalTypeAnnotation;
@@ -76,33 +77,34 @@ public class ParquetWriteStrategy extends AbstractWriteStrategy {
         }
     }
 
-    public ParquetWriteStrategy(TextFileSinkConfig textFileSinkConfig) {
-        super(textFileSinkConfig);
+    public ParquetWriteStrategy(FileSinkConfig fileSinkConfig) {
+        super(fileSinkConfig);
         this.beingWrittenWriter = new HashMap<>();
     }
 
     @Override
-    public void init(HadoopConf conf, String jobId, int subTaskIndex) {
-        super.init(conf, jobId, subTaskIndex);
+    public void init(HadoopConf conf, String jobId, String uuidPrefix, int subTaskIndex) {
+        super.init(conf, jobId, uuidPrefix, subTaskIndex);
         schemaConverter = new AvroSchemaConverter(getConfiguration(hadoopConf));
     }
 
     @Override
     public void write(@NonNull SeaTunnelRow seaTunnelRow) {
+        super.write(seaTunnelRow);
         String filePath = getOrCreateFilePathBeingWritten(seaTunnelRow);
         ParquetWriter<GenericRecord> writer = getOrCreateWriter(filePath);
         GenericRecordBuilder recordBuilder = new GenericRecordBuilder(schema);
         for (Integer integer : sinkColumnsIndexInRow) {
             String fieldName = seaTunnelRowType.getFieldName(integer);
             Object field = seaTunnelRow.getField(integer);
-            recordBuilder.set(fieldName, resolveObject(field, seaTunnelRowType.getFieldType(integer)));
+            recordBuilder.set(fieldName.toLowerCase(), resolveObject(field, seaTunnelRowType.getFieldType(integer)));
         }
         GenericData.Record record = recordBuilder.build();
         try {
             writer.write(record);
         } catch (IOException e) {
             String errorMsg = String.format("Write data to file [%s] error", filePath);
-            throw new RuntimeException(errorMsg, e);
+            throw new FileConnectorException(CommonErrorCode.FILE_OPERATION_FAILED, errorMsg, e);
         }
     }
 
@@ -113,10 +115,11 @@ public class ParquetWriteStrategy extends AbstractWriteStrategy {
                 v.close();
             } catch (IOException e) {
                 String errorMsg = String.format("Close file [%s] parquet writer failed, error msg: [%s]", k, e.getMessage());
-                throw new RuntimeException(errorMsg, e);
+                throw new FileConnectorException(CommonErrorCode.WRITER_OPERATION_FAILED, errorMsg, e);
             }
             needMoveFiles.put(k, getTargetLocation(k));
         });
+        this.beingWrittenWriter.clear();
     }
 
     private ParquetWriter<GenericRecord> getOrCreateWriter(@NonNull String filePath) {
@@ -137,16 +140,14 @@ public class ParquetWriteStrategy extends AbstractWriteStrategy {
                         .withDataModel(dataModel)
                         // use parquet v1 to improve compatibility
                         .withWriterVersion(ParquetProperties.WriterVersion.PARQUET_1_0)
-                        // Temporarily use snappy compress
-                        // I think we can use the compress option in config to control this
-                        .withCompressionCodec(CompressionCodecName.SNAPPY)
+                        .withCompressionCodec(compressFormat.getParquetCompression())
                         .withSchema(schema)
                         .build();
                 this.beingWrittenWriter.put(filePath, newWriter);
                 return newWriter;
             } catch (IOException e) {
                 String errorMsg = String.format("Get parquet writer for file [%s] error", filePath);
-                throw new RuntimeException(errorMsg, e);
+                throw new FileConnectorException(CommonErrorCode.WRITER_OPERATION_FAILED, errorMsg, e);
             }
         }
         return writer;
@@ -154,6 +155,9 @@ public class ParquetWriteStrategy extends AbstractWriteStrategy {
 
     @SuppressWarnings("checkstyle:MagicNumber")
     private Object resolveObject(Object data, SeaTunnelDataType<?> seaTunnelDataType) {
+        if (data == null) {
+            return null;
+        }
         switch (seaTunnelDataType.getSqlType()) {
             case ARRAY:
                 BasicType<?> elementType = ((ArrayType<?, ?>) seaTunnelDataType).getElementType();
@@ -189,12 +193,13 @@ public class ParquetWriteStrategy extends AbstractWriteStrategy {
                 Schema recordSchema = buildAvroSchemaWithRowType((SeaTunnelRowType) seaTunnelDataType, sinkColumnsIndex);
                 GenericRecordBuilder recordBuilder = new GenericRecordBuilder(recordSchema);
                 for (int i = 0; i < fieldNames.length; i++) {
-                    recordBuilder.set(fieldNames[i], resolveObject(seaTunnelRow.getField(i), fieldTypes[i]));
+                    recordBuilder.set(fieldNames[i].toLowerCase(), resolveObject(seaTunnelRow.getField(i), fieldTypes[i]));
                 }
                 return recordBuilder.build();
             default:
-                String errorMsg = String.format("SeaTunnel file connector is not supported for this data type [%s]", seaTunnelDataType.getSqlType());
-                throw new UnsupportedOperationException(errorMsg);
+                String errorMsg = String.format("SeaTunnel file connector is not supported for this data type [%s]",
+                        seaTunnelDataType.getSqlType());
+                throw new FileConnectorException(CommonErrorCode.UNSUPPORTED_DATA_TYPE, errorMsg);
         }
     }
 
@@ -274,8 +279,9 @@ public class ParquetWriteStrategy extends AbstractWriteStrategy {
                 return Types.optionalGroup().addFields(types).named(fieldName);
             case NULL:
             default:
-                String errorMsg = String.format("SeaTunnel file connector is not supported for this data type [%s]", seaTunnelDataType.getSqlType());
-                throw new UnsupportedOperationException(errorMsg);
+                String errorMsg = String.format("SeaTunnel file connector is not supported for this data type [%s]",
+                        seaTunnelDataType.getSqlType());
+                throw new FileConnectorException(CommonErrorCode.UNSUPPORTED_DATA_TYPE, errorMsg);
         }
     }
 
@@ -284,7 +290,7 @@ public class ParquetWriteStrategy extends AbstractWriteStrategy {
         SeaTunnelDataType<?>[] fieldTypes = seaTunnelRowType.getFieldTypes();
         String[] fieldNames = seaTunnelRowType.getFieldNames();
         sinkColumnsIndex.forEach(index -> {
-            Type type = seaTunnelDataType2ParquetDataType(fieldNames[index], fieldTypes[index]);
+            Type type = seaTunnelDataType2ParquetDataType(fieldNames[index].toLowerCase(), fieldTypes[index]);
             types.add(type);
         });
         MessageType seaTunnelRow = Types.buildMessage().addFields(types.toArray(new Type[0])).named("SeaTunnelRecord");

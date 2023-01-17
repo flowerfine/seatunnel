@@ -19,7 +19,9 @@ package org.apache.seatunnel.core.starter.utils;
 
 import org.apache.seatunnel.common.config.DeployMode;
 import org.apache.seatunnel.core.starter.command.AbstractCommandArgs;
+import org.apache.seatunnel.core.starter.command.Command;
 
+import com.beust.jcommander.Parameter;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -44,7 +46,18 @@ public class FileUtilsTest {
     }
 
     private static class SparkCommandArgs extends AbstractCommandArgs {
+
+        @Parameter(names = {"-c", "--config"},
+            description = "Config file",
+            required = true)
+        private String configFile;
+
         private DeployMode deployMode;
+
+        @Override
+        public Command<?> buildCommand() {
+            return null;
+        }
 
         public void setDeployMode(DeployMode deployMode) {
             this.deployMode = deployMode;
@@ -52,6 +65,16 @@ public class FileUtilsTest {
 
         public DeployMode getDeployMode() {
             return deployMode;
+        }
+
+        @Override
+        public String getConfigFile() {
+            return this.configFile;
+        }
+
+        @Override
+        public void setConfigFile(String configFile) {
+            this.configFile = configFile;
         }
     }
 }

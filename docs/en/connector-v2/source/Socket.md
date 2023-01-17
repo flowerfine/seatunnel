@@ -11,16 +11,16 @@ Used to read data from Socket.
 - [x] [batch](../../concept/connector-v2-features.md)
 - [x] [stream](../../concept/connector-v2-features.md)
 - [ ] [exactly-once](../../concept/connector-v2-features.md)
-- [ ] [schema projection](../../concept/connector-v2-features.md)
+- [ ] [column projection](../../concept/connector-v2-features.md)
 - [ ] [parallelism](../../concept/connector-v2-features.md)
 - [ ] [support user-defined split](../../concept/connector-v2-features.md)
 
 ##  Options
 
 | name           | type   | required | default value |
-| -------------- |--------| -------- | ------------- |
-| host           | String | No       | localhost     |
-| port           | Integer| No       | 9999          |
+| -------------- |--------|----------|---------------|
+| host           | String | Yes      |               |
+| port           | Integer| Yes      |               |
 | common-options |        | no       | -             |
 
 ### host [string]
@@ -62,9 +62,6 @@ source {
     }
 }
 
-transform {
-}
-
 sink {
   Console {}
 }
@@ -103,3 +100,7 @@ spark
 ### 2.2.0-beta 2022-09-26
 
 - Add Socket Source Connector
+
+### Next Version
+
+- `host` and `port` become required ([3317](https://github.com/apache/incubator-seatunnel/pull/3317))

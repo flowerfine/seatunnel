@@ -37,6 +37,7 @@ import org.testcontainers.containers.Container;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.lifecycle.Startables;
+import org.testcontainers.utility.DockerLoggerFactory;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -73,7 +74,7 @@ public abstract class AbstractJdbcIT extends TestSuiteBase implements TestResour
 
     @TestContainerExtension
     private final ContainerExtendedFactory extendedFactory = container -> {
-        Container.ExecResult extraCommands = container.execInContainer("bash", "-c", "mkdir -p /tmp/seatunnel/plugins/Jdbc/lib && cd /tmp/seatunnel/plugins/Jdbc/lib && curl -O " + jdbcCase.getDriverJar());
+        Container.ExecResult extraCommands = container.execInContainer("bash", "-c", "mkdir -p /tmp/jars && cd /tmp/jars && curl -O " + jdbcCase.getDriverJar());
         Assertions.assertEquals(0, extraCommands.getExitCode());
     };
 
@@ -83,14 +84,14 @@ public abstract class AbstractJdbcIT extends TestSuiteBase implements TestResour
             .withNetwork(NETWORK)
             .withNetworkAliases(jdbcCase.getNetworkAliases())
             .withEnv(jdbcCase.getContainerEnv())
-            .withLogConsumer(new Slf4jLogConsumer(log));
+            .withLogConsumer(new Slf4jLogConsumer(DockerLoggerFactory.getLogger(jdbcCase.getDockerImage())));
         dbServer.setPortBindings(Lists.newArrayList(
-            String.format("%s:%s", jdbcCase.getPort(), jdbcCase.getPort())));
+            String.format("%s:%s", jdbcCase.getLocalPort(), jdbcCase.getPort())));
         Startables.deepStart(Stream.of(dbServer)).join();
 
         given().ignoreExceptions()
             .await()
-            .atMost(180, TimeUnit.SECONDS)
+            .atMost(360, TimeUnit.SECONDS)
             .untilAsserted(() -> {
                 this.initializeJdbcConnection(jdbcCase.getJdbcUrl());
             });
@@ -108,7 +109,7 @@ public abstract class AbstractJdbcIT extends TestSuiteBase implements TestResour
     }
 
     private void batchInsertData() {
-        try (Connection connection = initializeJdbcConnection(String.format(jdbcCase.getJdbcTemplate(), jdbcCase.getPort(), jdbcCase.getDataBase()))) {
+        try (Connection connection = initializeJdbcConnection(String.format(jdbcCase.getJdbcTemplate(), jdbcCase.getLocalPort(), jdbcCase.getDataBase()))) {
             connection.setAutoCommit(false);
             try (PreparedStatement preparedStatement = connection.prepareStatement(jdbcCase.getInitDataSql())) {
 

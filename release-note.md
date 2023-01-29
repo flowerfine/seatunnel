@@ -3,8 +3,10 @@
 ## New Feature
 ### Zeta Engine
 - [Script]Add support close engine instance shell
+- [Client]Add Zeta Client ShutdownHook To Cancel Job
 ### Core
 - [Starter][Flink]Support transform-v2 for flink #3396
+- [Flink] Support flink 1.14.x #3963
 ### Transformer
 - [Spark] Support transform-v2 for spark (#3409)
 - [ALL]Add FieldMapper Transform #3781
@@ -38,6 +40,7 @@
 ## Bug Fixes
 ### Connectors
 - [ClickHouse File] Fix ClickhouseFile Committer Serializable Problems #3803
+- [ClickHouse] Fix clickhouse write cdc changelog update event #3951
 
 ### Zeta Engine
 - [Checkpoint] Fix Checkpoint Continue Trigger After Job CANCELED #3808

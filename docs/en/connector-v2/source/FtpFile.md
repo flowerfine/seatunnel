@@ -48,6 +48,8 @@ If you use SeaTunnel Engine, It automatically integrated the hadoop jar when you
 | schema                    | config  | no       | -                   |
 | common-options            |         | no       | -                   |
 | sheet_name                | string  | no       | -                   |
+| file_filter_pattern       | string  | no       | -                   |
+| compress_codec            | string  | no       | none                |
 
 ### host [string]
 
@@ -57,9 +59,9 @@ The target ftp host is required
 
 The target ftp port is required
 
-### username [string]
+### user [string]
 
-The target ftp username is required
+The target ftp user name is required
 
 ### password [string]
 
@@ -121,7 +123,7 @@ For example, set like following:
 
 `skip_header_row_number = 2`
 
-then Seatunnel will skip the first 2 lines from source files
+then SeaTunnel will skip the first 2 lines from source files
 
 ### schema [config]
 
@@ -225,7 +227,17 @@ Source plugin common parameters, please refer to [Source Common Options](common-
 
 ### sheet_name [string]
 
-Reader the sheet of the workbook,Only used when file_format is excel.
+Reader the sheet of the workbook,Only used when file_format_type is excel.
+
+### compress_codec [string]
+
+The compress codec of files and the details that supported as the following shown:
+
+- txt: `lzo` `none`
+- json: `lzo` `none`
+- csv: `lzo` `none`
+- orc/parquet:  
+  automatically recognizes the compression type, no additional settings required.
 
 ## Example
 
@@ -255,7 +267,7 @@ Reader the sheet of the workbook,Only used when file_format is excel.
 
 ### 2.3.0-beta 2022-10-20
 
-- [BugFix] Fix the bug of incorrect path in windows environment ([2980](https://github.com/apache/incubator-seatunnel/pull/2980))
-- [Improve] Support extract partition from SeaTunnelRow fields ([3085](https://github.com/apache/incubator-seatunnel/pull/3085))
-- [Improve] Support parse field from file path ([2985](https://github.com/apache/incubator-seatunnel/pull/2985))
+- [BugFix] Fix the bug of incorrect path in windows environment ([2980](https://github.com/apache/seatunnel/pull/2980))
+- [Improve] Support extract partition from SeaTunnelRow fields ([3085](https://github.com/apache/seatunnel/pull/3085))
+- [Improve] Support parse field from file path ([2985](https://github.com/apache/seatunnel/pull/2985))
 

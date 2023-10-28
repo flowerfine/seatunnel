@@ -87,7 +87,6 @@ public class MySqlTypeMapper implements JdbcDialectTypeMapper {
     private static final String MYSQL_VARBINARY = "VARBINARY";
     private static final String MYSQL_GEOMETRY = "GEOMETRY";
 
-    @SuppressWarnings("checkstyle:MagicNumber")
     @Override
     public SeaTunnelDataType<?> mapping(ResultSetMetaData metadata, int colIndex)
             throws SQLException {
@@ -97,7 +96,11 @@ public class MySqlTypeMapper implements JdbcDialectTypeMapper {
         int scale = metadata.getScale(colIndex);
         switch (mysqlType) {
             case MYSQL_BIT:
-                return BasicType.BOOLEAN_TYPE;
+                if (precision == 1) {
+                    return BasicType.BOOLEAN_TYPE;
+                } else {
+                    return PrimitiveByteArrayType.INSTANCE;
+                }
             case MYSQL_TINYINT:
             case MYSQL_TINYINT_UNSIGNED:
             case MYSQL_SMALLINT:

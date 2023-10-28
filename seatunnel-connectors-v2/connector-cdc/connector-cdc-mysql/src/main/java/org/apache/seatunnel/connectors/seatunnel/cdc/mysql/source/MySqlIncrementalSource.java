@@ -50,6 +50,7 @@ import com.google.auto.service.AutoService;
 import lombok.NoArgsConstructor;
 
 import java.time.ZoneId;
+import java.util.List;
 
 @NoArgsConstructor
 @AutoService(SeaTunnelSource.class)
@@ -58,8 +59,10 @@ public class MySqlIncrementalSource<T> extends IncrementalSource<T, JdbcSourceCo
     static final String IDENTIFIER = "MySQL-CDC";
 
     public MySqlIncrementalSource(
-            ReadonlyConfig options, SeaTunnelDataType<SeaTunnelRow> dataType) {
-        super(options, dataType);
+            ReadonlyConfig options,
+            SeaTunnelDataType<SeaTunnelRow> dataType,
+            List<CatalogTable> catalogTables) {
+        super(options, dataType, catalogTables);
     }
 
     @Override
@@ -106,11 +109,13 @@ public class MySqlIncrementalSource<T> extends IncrementalSource<T, JdbcSourceCo
         SeaTunnelDataType<SeaTunnelRow> physicalRowType;
         if (dataType == null) {
             // TODO: support metadata keys
-            Catalog mySqlCatalog = new MySqlCatalogFactory().createCatalog("mysql", config);
-            CatalogTable table =
-                    mySqlCatalog.getTable(
-                            TablePath.of(config.get(CatalogOptions.TABLE_NAMES).get(0)));
-            physicalRowType = table.getTableSchema().toPhysicalRowDataType();
+            try (Catalog catalog = new MySqlCatalogFactory().createCatalog("mysql", config)) {
+                catalog.open();
+                CatalogTable table =
+                        catalog.getTable(
+                                TablePath.of(config.get(CatalogOptions.TABLE_NAMES).get(0)));
+                physicalRowType = table.getTableSchema().toPhysicalRowDataType();
+            }
         } else {
             physicalRowType = dataType;
         }

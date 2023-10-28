@@ -52,11 +52,11 @@ import java.util.stream.Stream;
 
 @DisabledOnContainer(
         value = {},
-        type = {EngineType.SPARK, EngineType.SEATUNNEL},
+        type = {EngineType.SPARK},
         disabledReason = "Spark engine will lose the row kind of record")
 @Slf4j
 public class ClickhouseSinkCDCChangelogIT extends TestSuiteBase implements TestResource {
-    private static final String CLICKHOUSE_DOCKER_IMAGE = "clickhouse/clickhouse-server:latest";
+    private static final String CLICKHOUSE_DOCKER_IMAGE = "clickhouse/clickhouse-server:23.3.13.6";
     private static final String HOST = "clickhouse";
     private static final String DRIVER_CLASS = "com.clickhouse.jdbc.ClickHouseDriver";
     private static final String DATABASE = "default";

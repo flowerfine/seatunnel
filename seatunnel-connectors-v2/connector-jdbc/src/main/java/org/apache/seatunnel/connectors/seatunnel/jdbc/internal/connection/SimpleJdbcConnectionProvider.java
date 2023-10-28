@@ -46,19 +46,7 @@ public class SimpleJdbcConnectionProvider implements JdbcConnectionProvider, Ser
     private final JdbcConnectionConfig jdbcConfig;
 
     private transient Driver loadedDriver;
-    private transient Connection connection;
-
-    static {
-        // Load DriverManager first to avoid deadlock between DriverManager's
-        // static initialization block and specific driver class's static
-        // initialization block when two different driver classes are loading
-        // concurrently using Class.forName while DriverManager is uninitialized
-        // before.
-        //
-        // This could happen in JDK 8 but not above as driver loading has been
-        // moved out of DriverManager's static initialization block since JDK 9.
-        DriverManager.getDrivers();
-    }
+    protected transient Connection connection;
 
     public SimpleJdbcConnectionProvider(@NonNull JdbcConnectionConfig jdbcConfig) {
         this.jdbcConfig = jdbcConfig;
@@ -120,6 +108,7 @@ public class SimpleJdbcConnectionProvider implements JdbcConnectionProvider, Ser
         if (jdbcConfig.getPassword().isPresent()) {
             info.setProperty("password", jdbcConfig.getPassword().get());
         }
+        info.putAll(jdbcConfig.getProperties());
         connection = driver.connect(jdbcConfig.getUrl(), info);
         if (connection == null) {
             // Throw same exception as DriverManager.getConnection when no driver found to match

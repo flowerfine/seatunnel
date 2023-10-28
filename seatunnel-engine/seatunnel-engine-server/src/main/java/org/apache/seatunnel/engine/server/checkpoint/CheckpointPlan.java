@@ -25,10 +25,10 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
 
 /** checkpoint plan info */
 @Getter
@@ -61,12 +61,12 @@ public class CheckpointPlan {
     private final Map<TaskLocation, Set<Tuple2<ActionStateKey, Integer>>> subtaskActions;
 
     public static final class Builder {
-        private final Set<TaskLocation> pipelineSubtasks = new HashSet<>();
-        private final Set<TaskLocation> startingSubtasks = new HashSet<>();
-        private final Map<ActionStateKey, Integer> pipelineActions = new HashMap<>();
+        private final Set<TaskLocation> pipelineSubtasks = new CopyOnWriteArraySet<>();
+        private final Set<TaskLocation> startingSubtasks = new CopyOnWriteArraySet<>();
+        private final Map<ActionStateKey, Integer> pipelineActions = new ConcurrentHashMap<>();
 
         private final Map<TaskLocation, Set<Tuple2<ActionStateKey, Integer>>> subtaskActions =
-                new HashMap<>();
+                new ConcurrentHashMap<>();
 
         private Builder() {}
 

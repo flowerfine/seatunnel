@@ -27,6 +27,7 @@ import org.apache.seatunnel.api.table.type.SeaTunnelDataType;
 import org.apache.seatunnel.api.table.type.SqlType;
 import org.apache.seatunnel.common.exception.CommonErrorCode;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.exception.JdbcConnectorException;
+import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.DatabaseIdentifier;
 
 import org.apache.commons.collections4.MapUtils;
 
@@ -58,6 +59,7 @@ public class MysqlDataTypeConvertor implements DataTypeConvertor<MysqlType> {
             case BIGINT_UNSIGNED:
             case DECIMAL:
             case DECIMAL_UNSIGNED:
+            case BIT:
                 // parse precision and scale
                 int left = connectorDataType.indexOf("(");
                 int right = connectorDataType.indexOf(")");
@@ -89,13 +91,20 @@ public class MysqlDataTypeConvertor implements DataTypeConvertor<MysqlType> {
             MysqlType mysqlType, Map<String, Object> dataTypeProperties)
             throws DataTypeConvertException {
         checkNotNull(mysqlType, "mysqlType can not be null");
-
+        int precision;
+        int scale;
         switch (mysqlType) {
             case NULL:
                 return BasicType.VOID_TYPE;
             case BOOLEAN:
                 return BasicType.BOOLEAN_TYPE;
             case BIT:
+                precision = (Integer) dataTypeProperties.get(MysqlDataTypeConvertor.PRECISION);
+                if (precision == 1) {
+                    return BasicType.BOOLEAN_TYPE;
+                } else {
+                    return PrimitiveByteArrayType.INSTANCE;
+                }
             case TINYINT:
                 return BasicType.BYTE_TYPE;
             case TINYINT_UNSIGNED:
@@ -105,6 +114,7 @@ public class MysqlDataTypeConvertor implements DataTypeConvertor<MysqlType> {
             case INT:
             case MEDIUMINT:
             case MEDIUMINT_UNSIGNED:
+            case YEAR:
                 return BasicType.INT_TYPE;
             case INT_UNSIGNED:
             case BIGINT:
@@ -143,9 +153,8 @@ public class MysqlDataTypeConvertor implements DataTypeConvertor<MysqlType> {
             case BIGINT_UNSIGNED:
             case DECIMAL:
             case DECIMAL_UNSIGNED:
-                Integer precision =
-                        MapUtils.getInteger(dataTypeProperties, PRECISION, DEFAULT_PRECISION);
-                Integer scale = MapUtils.getInteger(dataTypeProperties, SCALE, DEFAULT_SCALE);
+                precision = MapUtils.getInteger(dataTypeProperties, PRECISION, DEFAULT_PRECISION);
+                scale = MapUtils.getInteger(dataTypeProperties, SCALE, DEFAULT_SCALE);
                 return new DecimalType(precision, scale);
                 // TODO: support 'SET' & 'YEAR' type
             default:
@@ -160,7 +169,9 @@ public class MysqlDataTypeConvertor implements DataTypeConvertor<MysqlType> {
         SqlType sqlType = seaTunnelDataType.getSqlType();
         // todo: verify
         switch (sqlType) {
-            case ARRAY:
+                // from pg array not support
+                //            case ARRAY:
+                //                return MysqlType.ENUM;
             case MAP:
             case ROW:
             case STRING:
@@ -188,9 +199,9 @@ public class MysqlDataTypeConvertor implements DataTypeConvertor<MysqlType> {
             case DATE:
                 return MysqlType.DATE;
             case TIME:
-                return MysqlType.DATETIME;
+                return MysqlType.TIME;
             case TIMESTAMP:
-                return MysqlType.TIMESTAMP;
+                return MysqlType.DATETIME;
             default:
                 throw new JdbcConnectorException(
                         CommonErrorCode.UNSUPPORTED_DATA_TYPE,
@@ -200,6 +211,6 @@ public class MysqlDataTypeConvertor implements DataTypeConvertor<MysqlType> {
 
     @Override
     public String getIdentity() {
-        return "Mysql";
+        return DatabaseIdentifier.MYSQL;
     }
 }

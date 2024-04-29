@@ -90,7 +90,8 @@ const sidebars = {
                 "concept/connector-v2-features",
                 'concept/schema-feature',
                 'concept/JobEnvConfig',
-                'concept/speed-limit'
+                'concept/speed-limit',
+                'concept/event-listener'
             ]
         },
         "Connector-v2-release-state",
@@ -160,7 +161,8 @@ const sidebars = {
             "type": "category",
             "label": "Command",
             "items": [
-                "command/usage"
+                "command/usage",
+                "command/connector-check"
             ]
         },
         {
@@ -174,7 +176,8 @@ const sidebars = {
                 "seatunnel-engine/savepoint",
                 "seatunnel-engine/checkpoint-storage",
                 "seatunnel-engine/rest-api",
-                "seatunnel-engine/tcp"
+                "seatunnel-engine/tcp",
+                "seatunnel-engine/engine-jar-storage-mode"
             ]
         },
         {

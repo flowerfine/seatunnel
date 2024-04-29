@@ -19,13 +19,17 @@ package org.apache.seatunnel.engine.server;
 
 import org.apache.seatunnel.api.common.metrics.JobMetrics;
 import org.apache.seatunnel.api.common.metrics.RawJobMetrics;
+import org.apache.seatunnel.api.event.EventHandler;
+import org.apache.seatunnel.api.event.EventProcessor;
 import org.apache.seatunnel.common.utils.ExceptionUtils;
 import org.apache.seatunnel.common.utils.SeaTunnelException;
 import org.apache.seatunnel.common.utils.StringFormatUtils;
 import org.apache.seatunnel.engine.common.Constant;
 import org.apache.seatunnel.engine.common.config.EngineConfig;
+import org.apache.seatunnel.engine.common.config.server.ConnectorJarStorageConfig;
 import org.apache.seatunnel.engine.common.exception.JobException;
 import org.apache.seatunnel.engine.common.exception.JobNotFoundException;
+import org.apache.seatunnel.engine.common.exception.SavePointFailedException;
 import org.apache.seatunnel.engine.common.exception.SeaTunnelEngineException;
 import org.apache.seatunnel.engine.common.utils.PassiveCompletableFuture;
 import org.apache.seatunnel.engine.core.job.JobDAGInfo;
@@ -36,6 +40,8 @@ import org.apache.seatunnel.engine.core.job.PipelineStatus;
 import org.apache.seatunnel.engine.server.dag.physical.PhysicalVertex;
 import org.apache.seatunnel.engine.server.dag.physical.PipelineLocation;
 import org.apache.seatunnel.engine.server.dag.physical.SubPlan;
+import org.apache.seatunnel.engine.server.event.JobEventHttpReportHandler;
+import org.apache.seatunnel.engine.server.event.JobEventProcessor;
 import org.apache.seatunnel.engine.server.execution.ExecutionState;
 import org.apache.seatunnel.engine.server.execution.TaskExecutionState;
 import org.apache.seatunnel.engine.server.execution.TaskGroupLocation;
@@ -47,16 +53,19 @@ import org.apache.seatunnel.engine.server.metrics.SeaTunnelMetricsContext;
 import org.apache.seatunnel.engine.server.resourcemanager.ResourceManager;
 import org.apache.seatunnel.engine.server.resourcemanager.ResourceManagerFactory;
 import org.apache.seatunnel.engine.server.resourcemanager.resource.SlotProfile;
+import org.apache.seatunnel.engine.server.service.jar.ConnectorPackageService;
 import org.apache.seatunnel.engine.server.task.operation.GetMetricsOperation;
 import org.apache.seatunnel.engine.server.utils.NodeEngineUtil;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.hazelcast.cluster.Address;
+import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import com.hazelcast.internal.serialization.Data;
 import com.hazelcast.internal.services.MembershipServiceEvent;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.map.IMap;
+import com.hazelcast.ringbuffer.Ringbuffer;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import lombok.NonNull;
 
@@ -152,6 +161,10 @@ public class CoordinatorService {
 
     private final EngineConfig engineConfig;
 
+    private ConnectorPackageService connectorPackageService;
+
+    private EventProcessor eventProcessor;
+
     public CoordinatorService(
             @NonNull NodeEngineImpl nodeEngine,
             @NonNull SeaTunnelServer seaTunnelServer,
@@ -170,12 +183,47 @@ public class CoordinatorService {
                 this::checkNewActiveMaster, 0, 100, TimeUnit.MILLISECONDS);
     }
 
+    private JobEventProcessor createJobEventProcessor(
+            String reportHttpEndpoint,
+            Map<String, String> reportHttpHeaders,
+            NodeEngineImpl nodeEngine) {
+        List<EventHandler> handlers =
+                EventProcessor.loadEventHandlers(Thread.currentThread().getContextClassLoader());
+
+        if (reportHttpEndpoint != null) {
+            String ringBufferName = "zeta-job-event";
+            int maxBufferCapacity = 2000;
+            nodeEngine
+                    .getHazelcastInstance()
+                    .getConfig()
+                    .addRingBufferConfig(
+                            new Config()
+                                    .getRingbufferConfig(ringBufferName)
+                                    .setCapacity(maxBufferCapacity)
+                                    .setBackupCount(0)
+                                    .setAsyncBackupCount(1)
+                                    .setTimeToLiveSeconds(0));
+            Ringbuffer ringbuffer = nodeEngine.getHazelcastInstance().getRingbuffer(ringBufferName);
+            JobEventHttpReportHandler httpReportHandler =
+                    new JobEventHttpReportHandler(
+                            reportHttpEndpoint, reportHttpHeaders, ringbuffer);
+            handlers.add(httpReportHandler);
+        }
+        logger.info("Loaded event handlers: " + handlers);
+        JobEventProcessor eventProcessor = new JobEventProcessor(handlers);
+        return eventProcessor;
+    }
+
     public JobHistoryService getJobHistoryService() {
         return jobHistoryService;
     }
 
     public JobMaster getJobMaster(Long jobId) {
         return runningJobMasterMap.get(jobId);
+    }
+
+    public EventProcessor getEventProcessor() {
+        return eventProcessor;
     }
 
     // On the new master node
@@ -220,6 +268,18 @@ public class CoordinatorService {
                                 .getHazelcastInstance()
                                 .getMap(Constant.IMAP_FINISHED_JOB_VERTEX_INFO),
                         engineConfig.getHistoryJobExpireMinutes());
+        eventProcessor =
+                createJobEventProcessor(
+                        engineConfig.getEventReportHttpApi(),
+                        engineConfig.getEventReportHttpHeaders(),
+                        nodeEngine);
+
+        // If the user has configured the connector package service, create it  on the master node.
+        ConnectorJarStorageConfig connectorJarStorageConfig =
+                engineConfig.getConnectorJarStorageConfig();
+        if (connectorJarStorageConfig.getEnable()) {
+            connectorPackageService = new ConnectorPackageService(seaTunnelServer);
+        }
 
         List<CompletableFuture<Void>> collect =
                 runningJobInfoIMap.entrySet().stream()
@@ -273,7 +333,8 @@ public class CoordinatorService {
                         ownedSlotProfilesIMap,
                         runningJobInfoIMap,
                         metricsImap,
-                        engineConfig);
+                        engineConfig,
+                        seaTunnelServer);
 
         try {
             jobMaster.init(runningJobInfoIMap.get(jobId).getInitializationTimestamp(), true);
@@ -350,6 +411,14 @@ public class CoordinatorService {
         if (resourceManager != null) {
             resourceManager.close();
         }
+
+        try {
+            if (eventProcessor != null) {
+                eventProcessor.close();
+            }
+        } catch (Exception e) {
+            throw new SeaTunnelEngineException("close event processor error", e);
+        }
     }
 
     /** Lazy load for resource manager */
@@ -394,7 +463,8 @@ public class CoordinatorService {
                         ownedSlotProfilesIMap,
                         runningJobInfoIMap,
                         metricsImap,
-                        engineConfig);
+                        engineConfig,
+                        seaTunnelServer);
         executorService.submit(
                 () -> {
                     try {
@@ -435,13 +505,21 @@ public class CoordinatorService {
     public PassiveCompletableFuture<Void> savePoint(long jobId) {
         CompletableFuture<Void> voidCompletableFuture = new CompletableFuture<>();
         if (!runningJobMasterMap.containsKey(jobId)) {
-            Throwable throwable =
-                    new Throwable("The jobId: " + jobId + "of savePoint does not exist");
-            logger.warning(throwable);
-            voidCompletableFuture.completeExceptionally(throwable);
+            SavePointFailedException exception =
+                    new SavePointFailedException(
+                            "The job with id '" + jobId + "' not running, save point failed");
+            logger.warning(exception);
+            voidCompletableFuture.completeExceptionally(exception);
         } else {
-            JobMaster jobMaster = runningJobMasterMap.get(jobId);
-            voidCompletableFuture = jobMaster.savePoint();
+            voidCompletableFuture =
+                    new PassiveCompletableFuture<>(
+                            CompletableFuture.supplyAsync(
+                                    () -> {
+                                        JobMaster runningJobMaster = runningJobMasterMap.get(jobId);
+                                        runningJobMaster.savePoint().join();
+                                        return null;
+                                    },
+                                    executorService));
         }
         return new PassiveCompletableFuture<>(voidCompletableFuture);
     }
@@ -750,5 +828,13 @@ public class CoordinatorService {
                         canceledJobCount,
                         "finishedJobCount",
                         finishedJobCount));
+    }
+
+    public ConnectorPackageService getConnectorPackageService() {
+        if (connectorPackageService == null) {
+            throw new SeaTunnelEngineException(
+                    "The user is not configured to enable connector package service, can not get connector package service service from master node.");
+        }
+        return connectorPackageService;
     }
 }

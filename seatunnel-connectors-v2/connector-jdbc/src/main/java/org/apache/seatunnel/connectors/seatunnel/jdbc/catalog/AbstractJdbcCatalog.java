@@ -22,7 +22,9 @@ import org.apache.seatunnel.api.table.catalog.Catalog;
 import org.apache.seatunnel.api.table.catalog.CatalogTable;
 import org.apache.seatunnel.api.table.catalog.Column;
 import org.apache.seatunnel.api.table.catalog.ConstraintKey;
+import org.apache.seatunnel.api.table.catalog.PreviewResult;
 import org.apache.seatunnel.api.table.catalog.PrimaryKey;
+import org.apache.seatunnel.api.table.catalog.SQLPreviewResult;
 import org.apache.seatunnel.api.table.catalog.TableIdentifier;
 import org.apache.seatunnel.api.table.catalog.TablePath;
 import org.apache.seatunnel.api.table.catalog.TableSchema;
@@ -31,6 +33,9 @@ import org.apache.seatunnel.api.table.catalog.exception.DatabaseAlreadyExistExce
 import org.apache.seatunnel.api.table.catalog.exception.DatabaseNotExistException;
 import org.apache.seatunnel.api.table.catalog.exception.TableAlreadyExistException;
 import org.apache.seatunnel.api.table.catalog.exception.TableNotExistException;
+import org.apache.seatunnel.common.exception.CommonError;
+import org.apache.seatunnel.common.exception.CommonErrorCode;
+import org.apache.seatunnel.common.exception.SeaTunnelRuntimeException;
 import org.apache.seatunnel.common.utils.JdbcUrlUtil;
 import org.apache.seatunnel.connectors.seatunnel.jdbc.catalog.utils.CatalogUtils;
 
@@ -49,14 +54,15 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static org.apache.seatunnel.shade.com.google.common.base.Preconditions.checkArgument;
-import static org.apache.seatunnel.shade.com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 public abstract class AbstractJdbcCatalog implements Catalog {
     private static final Logger LOG = LoggerFactory.getLogger(AbstractJdbcCatalog.class);
@@ -93,6 +99,11 @@ public abstract class AbstractJdbcCatalog implements Catalog {
         this.suffix = urlInfo.getSuffix();
         this.defaultSchema = Optional.ofNullable(defaultSchema);
         this.connectionMap = new ConcurrentHashMap<>();
+    }
+
+    @Override
+    public String name() {
+        return catalogName;
     }
 
     @Override
@@ -170,9 +181,7 @@ public abstract class AbstractJdbcCatalog implements Catalog {
                     ResultSet resultSet = ps.executeQuery()) {
 
                 TableSchema.Builder builder = TableSchema.builder();
-                while (resultSet.next()) {
-                    builder.column(buildColumn(resultSet));
-                }
+                buildColumnsWithErrorCheck(tablePath, resultSet, builder);
                 // add primary key
                 primaryKey.ifPresent(builder::primaryKey);
                 // add constraint key
@@ -186,10 +195,33 @@ public abstract class AbstractJdbcCatalog implements Catalog {
                         "",
                         catalogName);
             }
-
+        } catch (SeaTunnelRuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new CatalogException(
                     String.format("Failed getting table %s", tablePath.getFullName()), e);
+        }
+    }
+
+    protected void buildColumnsWithErrorCheck(
+            TablePath tablePath, ResultSet resultSet, TableSchema.Builder builder)
+            throws SQLException {
+        Map<String, String> unsupported = new LinkedHashMap<>();
+        while (resultSet.next()) {
+            try {
+                builder.column(buildColumn(resultSet));
+            } catch (SeaTunnelRuntimeException e) {
+                if (e.getSeaTunnelErrorCode()
+                        .equals(CommonErrorCode.CONVERT_TO_SEATUNNEL_TYPE_ERROR_SIMPLE)) {
+                    unsupported.put(e.getParams().get("field"), e.getParams().get("dataType"));
+                } else {
+                    throw e;
+                }
+            }
+        }
+        if (!unsupported.isEmpty()) {
+            throw CommonError.getCatalogTableWithUnsupportedType(
+                    catalogName, tablePath.getFullName(), unsupported);
         }
     }
 
@@ -408,6 +440,18 @@ public abstract class AbstractJdbcCatalog implements Catalog {
         }
     }
 
+    public void truncateTable(TablePath tablePath, boolean ignoreIfNotExists)
+            throws TableNotExistException, CatalogException {
+        checkNotNull(tablePath, "Table path cannot be null");
+        if (!databaseExists(tablePath.getDatabaseName())) {
+            if (ignoreIfNotExists) {
+                return;
+            }
+            throw new DatabaseNotExistException(catalogName, tablePath.getDatabaseName());
+        }
+        truncateTableInternal(tablePath);
+    }
+
     @Override
     public void dropDatabase(TablePath tablePath, boolean ignoreIfNotExists)
             throws DatabaseNotExistException, CatalogException {
@@ -420,7 +464,6 @@ public abstract class AbstractJdbcCatalog implements Catalog {
             }
             throw new DatabaseNotExistException(catalogName, tablePath.getDatabaseName());
         }
-
         dropDatabaseInternal(tablePath.getDatabaseName());
     }
 
@@ -483,7 +526,7 @@ public abstract class AbstractJdbcCatalog implements Catalog {
     // If sql is DDL, the execute() method always returns false, so the return value
     // should not be used to determine whether changes were made in database.
     protected boolean executeInternal(String url, String sql) throws SQLException {
-        LOG.info("create table sql is: {}", sql);
+        LOG.info("Execute sql : {}", sql);
         try (PreparedStatement ps = getConnection(url).prepareStatement(sql)) {
             return ps.execute();
         }
@@ -492,5 +535,67 @@ public abstract class AbstractJdbcCatalog implements Catalog {
     public CatalogTable getTable(String sqlQuery) throws SQLException {
         Connection defaultConnection = getConnection(defaultUrl);
         return CatalogUtils.getCatalogTable(defaultConnection, sqlQuery);
+    }
+
+    protected void truncateTableInternal(TablePath tablePath) throws CatalogException {
+        try {
+            executeInternal(defaultUrl, getTruncateTableSql(tablePath));
+        } catch (Exception e) {
+            throw new CatalogException(
+                    String.format(
+                            "Failed truncate table %s in catalog %s",
+                            tablePath.getFullName(), this.catalogName),
+                    e);
+        }
+    }
+
+    protected String getTruncateTableSql(TablePath tablePath) {
+        throw new UnsupportedOperationException();
+    }
+
+    protected String getExistDataSql(TablePath tablePath) {
+        throw new UnsupportedOperationException();
+    }
+
+    public void executeSql(TablePath tablePath, String sql) {
+        String dbUrl = getUrlFromDatabaseName(tablePath.getDatabaseName());
+        Connection connection = getConnection(dbUrl);
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            // Will there exist concurrent drop for one table?
+            ps.execute();
+        } catch (SQLException e) {
+            throw new CatalogException(String.format("Failed executeSql error %s", sql), e);
+        }
+    }
+
+    public boolean isExistsData(TablePath tablePath) {
+        String dbUrl = getUrlFromDatabaseName(tablePath.getDatabaseName());
+        Connection connection = getConnection(dbUrl);
+        String sql = getExistDataSql(tablePath);
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ResultSet resultSet = ps.executeQuery();
+            return resultSet.next();
+        } catch (SQLException e) {
+            throw new CatalogException(String.format("Failed executeSql error %s", sql), e);
+        }
+    }
+
+    @Override
+    public PreviewResult previewAction(
+            ActionType actionType, TablePath tablePath, Optional<CatalogTable> catalogTable) {
+        if (actionType == ActionType.CREATE_TABLE) {
+            checkArgument(catalogTable.isPresent(), "CatalogTable cannot be null");
+            return new SQLPreviewResult(getCreateTableSql(tablePath, catalogTable.get()));
+        } else if (actionType == ActionType.DROP_TABLE) {
+            return new SQLPreviewResult(getDropTableSql(tablePath));
+        } else if (actionType == ActionType.TRUNCATE_TABLE) {
+            return new SQLPreviewResult(getTruncateTableSql(tablePath));
+        } else if (actionType == ActionType.CREATE_DATABASE) {
+            return new SQLPreviewResult(getCreateDatabaseSql(tablePath.getDatabaseName()));
+        } else if (actionType == ActionType.DROP_DATABASE) {
+            return new SQLPreviewResult(getDropDatabaseSql(tablePath.getDatabaseName()));
+        } else {
+            throw new UnsupportedOperationException("Unsupported action type: " + actionType);
+        }
     }
 }

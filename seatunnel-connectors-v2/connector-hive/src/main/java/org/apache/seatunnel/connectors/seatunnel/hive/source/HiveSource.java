@@ -25,20 +25,23 @@ import org.apache.seatunnel.shade.com.typesafe.config.ConfigValueFactory;
 
 import org.apache.seatunnel.api.common.PrepareFailException;
 import org.apache.seatunnel.api.common.SeaTunnelAPIErrorCode;
+import org.apache.seatunnel.api.configuration.ReadonlyConfig;
 import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.api.table.catalog.schema.TableSchemaOptions;
 import org.apache.seatunnel.api.table.type.SqlType;
 import org.apache.seatunnel.common.config.CheckConfigUtil;
 import org.apache.seatunnel.common.config.CheckResult;
 import org.apache.seatunnel.common.constants.PluginType;
-import org.apache.seatunnel.common.exception.CommonErrorCode;
+import org.apache.seatunnel.common.exception.CommonError;
+import org.apache.seatunnel.common.exception.CommonErrorCodeDeprecated;
 import org.apache.seatunnel.common.utils.JsonUtils;
-import org.apache.seatunnel.connectors.seatunnel.file.config.BaseSourceConfig;
+import org.apache.seatunnel.connectors.seatunnel.file.config.BaseSourceConfigOptions;
 import org.apache.seatunnel.connectors.seatunnel.file.config.FileFormat;
 import org.apache.seatunnel.connectors.seatunnel.file.hdfs.source.BaseHdfsFileSource;
 import org.apache.seatunnel.connectors.seatunnel.hive.config.HiveConfig;
 import org.apache.seatunnel.connectors.seatunnel.hive.exception.HiveConnectorErrorCode;
 import org.apache.seatunnel.connectors.seatunnel.hive.exception.HiveConnectorException;
+import org.apache.seatunnel.connectors.seatunnel.hive.storage.StorageFactory;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
@@ -53,8 +56,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.FS_DEFAULT_NAME_KEY;
-import static org.apache.seatunnel.connectors.seatunnel.file.config.BaseSourceConfig.FILE_FORMAT_TYPE;
-import static org.apache.seatunnel.connectors.seatunnel.file.config.BaseSourceConfig.FILE_PATH;
+import static org.apache.seatunnel.connectors.seatunnel.file.config.BaseSourceConfigOptions.FILE_FORMAT_TYPE;
+import static org.apache.seatunnel.connectors.seatunnel.file.config.BaseSourceConfigOptions.FILE_PATH;
 import static org.apache.seatunnel.connectors.seatunnel.hive.config.HiveConfig.ORC_INPUT_FORMAT_CLASSNAME;
 import static org.apache.seatunnel.connectors.seatunnel.hive.config.HiveConfig.PARQUET_INPUT_FORMAT_CLASSNAME;
 import static org.apache.seatunnel.connectors.seatunnel.hive.config.HiveConfig.TEXT_INPUT_FORMAT_CLASSNAME;
@@ -99,10 +102,10 @@ public class HiveSource extends BaseHdfsFileSource {
                                     FILE_PATH.key(),
                                     FS_DEFAULT_NAME_KEY)));
         }
-        if (pluginConfig.hasPath(BaseSourceConfig.READ_PARTITIONS.key())) {
+        if (pluginConfig.hasPath(BaseSourceConfigOptions.READ_PARTITIONS.key())) {
             // verify partition list
             List<String> partitionsList =
-                    pluginConfig.getStringList(BaseSourceConfig.READ_PARTITIONS.key());
+                    pluginConfig.getStringList(BaseSourceConfigOptions.READ_PARTITIONS.key());
             if (partitionsList.isEmpty()) {
                 throw new HiveConnectorException(
                         SeaTunnelAPIErrorCode.CONFIG_VALIDATION_FAILED,
@@ -149,27 +152,37 @@ public class HiveSource extends BaseHdfsFileSource {
                             ConfigValueFactory.fromAnyRef(FileFormat.ORC.toString()));
         } else {
             throw new HiveConnectorException(
-                    CommonErrorCode.ILLEGAL_ARGUMENT,
+                    CommonErrorCodeDeprecated.ILLEGAL_ARGUMENT,
                     "Hive connector only support [text parquet orc] table now");
         }
-        String hdfsLocation = tableInformation.getSd().getLocation();
+        String hiveSdLocation = tableInformation.getSd().getLocation();
         try {
-            URI uri = new URI(hdfsLocation);
+            URI uri = new URI(hiveSdLocation);
             String path = uri.getPath();
-            String defaultFs = hdfsLocation.replace(path, "");
+            String defaultFs = hiveSdLocation.replace(path, "");
             pluginConfig =
                     pluginConfig
                             .withValue(
-                                    BaseSourceConfig.FILE_PATH.key(),
+                                    BaseSourceConfigOptions.FILE_PATH.key(),
                                     ConfigValueFactory.fromAnyRef(path))
                             .withValue(
                                     FS_DEFAULT_NAME_KEY, ConfigValueFactory.fromAnyRef(defaultFs));
+            /**
+             * Build hadoop conf(support s3、cos、oss、hdfs). The returned hadoop conf can be
+             * CosConf、OssConf、S3Conf、HadoopConf so that HadoopFileSystemProxy can obtain the
+             * correct Schema and FsHdfsImpl that can be filled into hadoop configuration in {@link
+             * org.apache.seatunnel.connectors.seatunnel.file.hadoop.HadoopFileSystemProxy#createConfiguration()}
+             */
+            hadoopConf =
+                    StorageFactory.getStorageType(hiveSdLocation)
+                            .buildHadoopConfWithReadOnlyConfig(
+                                    ReadonlyConfig.fromConfig(pluginConfig));
         } catch (URISyntaxException e) {
             String errorMsg =
                     String.format(
                             "Get hdfs namenode host from table location [%s] failed,"
                                     + "please check it",
-                            hdfsLocation);
+                            hiveSdLocation);
             throw new HiveConnectorException(
                     HiveConnectorErrorCode.GET_HDFS_NAMENODE_HOST_FAILED, errorMsg, e);
         }
@@ -183,20 +196,19 @@ public class HiveSource extends BaseHdfsFileSource {
         for (FieldSchema col : cols) {
             String name = col.getName();
             String type = col.getType();
-            fields.put(name, covertHiveTypeToSeaTunnelType(type));
+            fields.put(name, covertHiveTypeToSeaTunnelType(name, type));
         }
         schema.put("fields", fields);
         return schema;
     }
 
-    private Object covertHiveTypeToSeaTunnelType(String hiveType) {
+    private Object covertHiveTypeToSeaTunnelType(String name, String hiveType) {
         if (hiveType.contains("varchar")) {
             return SqlType.STRING;
         }
         if (hiveType.contains("char")) {
-            throw new HiveConnectorException(
-                    CommonErrorCode.UNSUPPORTED_DATA_TYPE,
-                    "SeaTunnel hive connector does not supported char type in text table");
+            throw CommonError.convertToSeaTunnelTypeError(
+                    getPluginName(), PluginType.SOURCE, hiveType, name);
         }
         if (hiveType.contains("binary")) {
             return SqlType.BYTES.name();
@@ -208,7 +220,7 @@ public class HiveSource extends BaseHdfsFileSource {
             String[] columns = hiveType.substring(start + 1, end).split(",");
             for (String column : columns) {
                 String[] splits = column.split(":");
-                fields.put(splits[0], covertHiveTypeToSeaTunnelType(splits[1]));
+                fields.put(splits[0], covertHiveTypeToSeaTunnelType(splits[0], splits[1]));
             }
             return fields;
         }
